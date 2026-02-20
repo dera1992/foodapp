@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+{% load django_bootstrap5 %}
+{% load i18n %}
+
+{% block title %}Log-in{% endblock %}
+
+{% block extra_head %}
+    {{ block.super }}
+    {% if recaptcha_site_key %}
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+      <div class="breadcrumb-area mb-50">
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <div class="breadcrumb-container">
+                        <ul>
+                            <li><a href="{% url 'home:home' %}"><i class="fa fa-home"></i> Home</a></li>
+                            <li class="active">Login</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+	<div class="page-content mb-50">
+		<div class="container">
+			<div class="row justify-content-center">
+				<div class="col-sm-12 col-md-12 col-xs-12 col-lg-6 mb-30">
+					<!-- Login Form s-->
+					<form method="post" action=".">
+                        {% csrf_token %}
+						<div class="login-form">
+							<h2 class="login-title" style="text-align:center;">Login</h2>
+
+                            {% bootstrap_form_errors form %}
+                            {% if form.errors %}
+                            <p style="text-align:center;">
+                                Please enter correct username and password.
+                                Please try again.
+                            </p >
+                            {% else %}
+                                <p style="text-align:center;">Please, use the following form to log-in:</p>
+                             {% endif %}
+
+							<div class="row">
+                                <input type="hidden" name="next" value="{{ next }}">
+								<div class="col-md-12 col-12 mb-20">
+									{% bootstrap_field form.username %}
+								</div>
+								<div class="col-12 mb-20">
+									{% bootstrap_field form.password %}
+								</div>
+								<div class="col-md-8">
+									{% bootstrap_field form.remember_me %}
+								</div>
+
+								<div class="col-12 mb-20">
+                                    {% if recaptcha_site_key %}
+									    <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+                                    {% endif %}
+								</div>
+
+								<div class="col-md-4 mt-10 mb-20 text-left text-md-right">
+									<a href="{% url "register" %}"> Create account</a> | <a href="{% url "password_reset" %}"> Forgotten pasward?</a>
+								</div>
+
+								<div class="col-md-12 justify-content-center">
+									<button class="register-button mt-0">Login</button>
+								</div>
+
+							</div>
+						</div>
+
+					</form>
+					<div class="text-center mt-4">
+						<p class="text-muted mb-3">Or continue with</p>
+						<div class="d-flex justify-content-center gap-3 flex-wrap">
+							<a class="btn btn-outline-danger" href="{% url 'social:begin' 'google-oauth2' %}">Google</a>
+							<a class="btn btn-outline-primary" href="{% url 'social:begin' 'facebook' %}">Facebook</a>
+							<a class="btn btn-outline-info" href="{% url 'social:begin' 'twitter' %}">Twitter</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load static %}
+{% load django_bootstrap5 %}
+{% load i18n %}
+
+{% block title %}Register{% endblock %}
+
+{% block extra_head %}
+    {{ block.super }}
+    {% if recaptcha_site_key %}
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    <div class="breadcrumb-area mb-50">
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <div class="breadcrumb-container">
+                        <ul>
+                            <li><a href="{% url 'home:home' %}"><i class="fa fa-home"></i> Home</a></li>
+                            <li class="active">Register</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+	<div class="page-content mb-50">
+		<div class="container">
+			<div class="row justify-content-center">
+				<div class="col-md-12 col-lg-6">
+					<form method="post" action="{% url 'register' %}">
+                        {% csrf_token %}
+						<div class="login-form">
+							<h4 class="login-title" style="text-align:center;">Register</h4>
+
+                            {% bootstrap_form_errors user_form %}
+							<div class="row">
+								<div class="col-12 mb-20">
+									{% bootstrap_field user_form.email %}
+								</div>
+								<div class="col-md-6 mb-20">
+									{% bootstrap_field user_form.password %}
+								</div>
+								<div class="col-md-6 mb-20">
+									{% bootstrap_field user_form.password2 %}
+								</div>
+                                <div class="col-12 mb-20">
+                                    {% if recaptcha_site_key %}
+									    <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+                                    {% endif %}
+                                </div>
+
+								<div class="col-12">
+									<button class="register-button mt-0">Register</button>
+								</div>
+							</div>
+
+							<div class="text-center mt-4">
+								<p class="text-muted mb-3">Or continue with</p>
+								<div class="d-flex justify-content-center gap-3 flex-wrap">
+									<a class="btn btn-outline-danger" href="{% url 'social:begin' 'google-oauth2' %}">Google</a>
+									<a class="btn btn-outline-primary" href="{% url 'social:begin' 'facebook' %}">Facebook</a>
+									<a class="btn btn-outline-info" href="{% url 'social:begin' 'twitter' %}">Twitter</a>
+								</div>
+							</div>
+						</div>
+
+					</form>
+				</div>
+			</div>
+		</div>
+	</div>
+{% endblock %}
