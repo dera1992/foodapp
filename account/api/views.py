@@ -1,11 +1,32 @@
+import importlib.util
 from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from account.models import User, Profile, SubscriptionPlan, Shop, ShopSubscription, DispatcherProfile, ShopFollower, ShopNotification, ShopIntegration
-from account.serializers import UserSerializer, ProfileSerializer, SubscriptionPlanSerializer, ShopSerializer, ShopSubscriptionSerializer, DispatcherProfileSerializer, ShopFollowerSerializer, ShopNotificationSerializer, ShopIntegrationSerializer
-from .filters import UserFilter, ShopFilter
+from account.models import (
+    DispatcherProfile,
+    Profile,
+    Shop,
+    ShopFollower,
+    ShopIntegration,
+    ShopNotification,
+    ShopSubscription,
+    SubscriptionPlan,
+    User,
+)
+from account.serializers import (
+    DispatcherProfileSerializer,
+    ProfileSerializer,
+    ShopFollowerSerializer,
+    ShopIntegrationSerializer,
+    ShopNotificationSerializer,
+    ShopSerializer,
+    ShopSubscriptionSerializer,
+    SubscriptionPlanSerializer,
+    UserSerializer,
+)
+
+from .filters import ShopFilter, UserFilter
 from .jwt_utils import create_token_pair, decode_refresh_token
 from .permissions import IsOwnerOrReadOnly
 
@@ -18,10 +39,7 @@ class RegisterAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         tokens = create_token_pair(user)
-        return Response({
-            "user": UserSerializer(user).data,
-            **tokens,
-        }, status=status.HTTP_201_CREATED)
+        return Response({"user": UserSerializer(user).data, **tokens}, status=status.HTTP_201_CREATED)
 
 
 class LoginAPIView(APIView):
@@ -55,7 +73,35 @@ class LogoutAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        if importlib.util.find_spec("rest_framework_simplejwt") is not None:
+            refresh = request.data.get("refresh")
+            if refresh:
+                try:
+                    from rest_framework_simplejwt.tokens import RefreshToken
+
+                    RefreshToken(refresh).blacklist()
+                except Exception:
+                    pass
         return Response({"detail": "Logged out successfully"})
+
+
+class MeAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+
+class ChooseRoleAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        role = request.data.get("role")
+        if role not in {"customer", "shop", "dispatcher"}:
+            return Response({"detail": "Invalid role"}, status=status.HTTP_400_BAD_REQUEST)
+        request.user.role = role
+        request.user.save(update_fields=["role"])
+        return Response(UserSerializer(request.user).data)
 
 
 class UserViewSet(viewsets.ModelViewSet):

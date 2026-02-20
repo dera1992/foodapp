@@ -1,12 +1,20 @@
+from django.db.models import Count
+from django.shortcuts import get_object_or_404
 from rest_framework import permissions, viewsets
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from blog.models import Category, Post
 from blog.serializers import CategorySerializer, PostSerializer
+
 from .permissions import IsOwnerOrReadOnly
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    search_fields = ["id"]
+    search_fields = ["title"]
+    ordering = ["title"]
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
@@ -15,9 +23,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all()
+    queryset = Post.objects.select_related("profile")
     serializer_class = PostSerializer
-    search_fields = ["id"]
+    search_fields = ["title", "content", "slug"]
+    ordering = ["-timestamp"]
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
@@ -25,3 +34,17 @@ class PostViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
 
 
+class PostBySlugAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, slug):
+        post = get_object_or_404(Post, slug=slug)
+        return Response(PostSerializer(post).data)
+
+
+class CategoryCountAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        counts = Post.objects.values("categories__title").annotate(total=Count("id")).order_by("-total")
+        return Response(list(counts))

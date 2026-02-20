@@ -44,7 +44,7 @@ class PermissionAPITests(APITestCase):
 
     def test_unauthenticated_budget_access_denied(self):
         response = self.client.get("/api/v1/budget/budgets/")
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_user_cannot_update_other_profile(self):
         self.client.force_authenticate(self.user1)
