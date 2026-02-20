@@ -1,9 +1,15 @@
+import importlib.util
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+HAS_DRF_SPECTACULAR = importlib.util.find_spec('drf_spectacular') is not None
+if HAS_DRF_SPECTACULAR:
+    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
 urlpatterns = [
+    path('api/v1/', include('seafood.api_urls')),
     path('admin/', admin.site.urls),
     path('account/', include('account.urls')),
     path('cart/', include('cart.urls', namespace='cart')),
@@ -25,4 +31,10 @@ urlpatterns = [
     path('ckeditor/', include('ckeditor_uploader.urls')),
 
 ]
+if HAS_DRF_SPECTACULAR:
+    urlpatterns = [
+        path('api/schema/', SpectacularAPIView.as_view(), name='api-schema'),
+        path('api/docs/', SpectacularSwaggerView.as_view(url_name='api-schema'), name='api-docs'),
+    ] + urlpatterns
+
 if settings.DEBUG:urlpatterns += static(settings.MEDIA_URL,document_root=settings.MEDIA_ROOT)
