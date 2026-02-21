@@ -131,3 +131,98 @@ class OwnerOrdersAPIView(APIView):
     def get(self, request):
         orders = Order.objects.filter(items__item__shop__owner=request.user).distinct().order_by("-created")
         return Response(OrderSerializer(orders, many=True).data)
+
+
+class CheckoutSummaryAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        order = Order.objects.filter(user=request.user, is_ordered=False).first()
+        if not order:
+            return Response({"detail": "No active order", "order": None, "states": [], "cities": []})
+        return Response(
+            {
+                "order": OrderSerializer(order).data,
+                "states": StateSerializer(State.objects.all(), many=True).data,
+                "cities": LgaSerializer(Lga.objects.all(), many=True).data,
+            }
+        )
+
+
+class TransferAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        order = Order.objects.filter(user=request.user, is_ordered=False).first()
+        if not order:
+            return Response({"detail": "No active order"}, status=status.HTTP_400_BAD_REQUEST)
+
+        order_items = order.items.all()
+        order_items.update(is_ordered=True)
+        order.is_ordered = True
+        order.save(update_fields=["is_ordered", "updated"])
+        return Response(OrderSerializer(order).data)
+
+
+class VerifyPaymentByRefAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ref):
+        order = get_object_or_404(Order, ref=ref)
+        if not (request.user.is_staff or order.user == request.user):
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+        order.items.all().update(is_ordered=True)
+        verified = order.verify_payment()
+        return Response({"verified": verified, "order": OrderSerializer(order).data})
+
+
+class AddCouponAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        code = request.data.get("code")
+        if not code:
+            return Response({"detail": "Coupon code is required"}, status=status.HTTP_400_BAD_REQUEST)
+        coupon = Coupon.objects.filter(code__iexact=code).first()
+        if not coupon:
+            return Response({"detail": "Invalid coupon"}, status=status.HTTP_400_BAD_REQUEST)
+        order = Order.objects.filter(user=request.user, is_ordered=False).first()
+        if not order:
+            return Response({"detail": "No active order"}, status=status.HTTP_400_BAD_REQUEST)
+        order.coupon = coupon
+        order.save(update_fields=["coupon"])
+        return Response(OrderSerializer(order).data)
+
+
+class OrderTrackingByRefAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, ref=None):
+        reference = ref or request.query_params.get("ref")
+        if not reference:
+            return Response({"detail": "ref is required"}, status=status.HTTP_400_BAD_REQUEST)
+        order = get_object_or_404(Order, ref=reference)
+        return Response({"status": order.get_status_label(), "steps": order.get_tracking_steps()})
+
+
+class UpdateOrderStatusAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, order_id):
+        order = Order.objects.filter(id=order_id).first()
+        if not order:
+            return Response({"detail": "Order not found"}, status=status.HTTP_400_BAD_REQUEST)
+        if not (request.user.is_staff or order.user == request.user):
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+
+        status_key = request.data.get("status")
+        if status_key == "being_delivered":
+            order.being_delivered = True
+        elif status_key == "received":
+            order.received = True
+        elif status_key == "is_ordered":
+            order.is_ordered = True
+        else:
+            return Response({"detail": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+        order.save()
+        return Response(OrderSerializer(order).data)

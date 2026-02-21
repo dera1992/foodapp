@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -11,6 +12,7 @@ from budget.serializers import (
     ShoppingListItemSerializer,
 )
 from foodCreate.models import Products
+from order.models import Order
 
 from .permissions import IsOwnerOrReadOnly
 
@@ -48,6 +50,46 @@ class BudgetViewSet(viewsets.ModelViewSet):
         item.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=True, methods=["post"], url_path="update-item-quantity")
+    def update_item_quantity(self, request, pk=None):
+        budget = self.get_object()
+        item = get_object_or_404(ShoppingListItem, id=request.data.get("item_id"), budget=budget)
+        quantity = int(request.data.get("quantity", 1))
+        item.quantity = max(1, quantity)
+        item.save(update_fields=["quantity"])
+        return Response(ShoppingListItemSerializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path="from-cart")
+    def from_cart(self, request, pk=None):
+        budget = self.get_object()
+        order = Order.objects.filter(user=request.user, is_ordered=False).first()
+        if not order:
+            return Response({"detail": "No active cart/order", "items": []})
+
+        created_items = []
+        for order_item in order.items.select_related("item"):
+            item, _ = ShoppingListItem.objects.get_or_create(
+                budget=budget,
+                product=order_item.item,
+                name="",
+                defaults={"quantity": order_item.quantity},
+            )
+            created_items.append(item)
+        return Response(ShoppingListItemSerializer(created_items, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="duplicate")
+    def duplicate(self, request, pk=None):
+        budget = self.get_object()
+        duplicate_budget = Budget.objects.create(user=request.user, total_budget=budget.total_budget)
+        for item in budget.items.all():
+            ShoppingListItem.objects.create(
+                budget=duplicate_budget,
+                product=item.product,
+                name=item.name,
+                quantity=item.quantity,
+            )
+        return Response(BudgetSerializer(duplicate_budget).data, status=status.HTTP_201_CREATED)
+
 
 class ShoppingListItemViewSet(viewsets.ModelViewSet):
     queryset = ShoppingListItem.objects.select_related("budget", "product")
@@ -79,8 +121,43 @@ class BudgetTemplateViewSet(viewsets.ModelViewSet):
             created_items.append(item)
         return Response(ShoppingListItemSerializer(created_items, many=True).data)
 
+    @action(detail=True, methods=["post"], url_path="add-item")
+    def add_item(self, request, pk=None):
+        template = self.get_object()
+        product = get_object_or_404(Products, id=request.data.get("product_id"))
+        quantity = int(request.data.get("quantity", 1))
+        item, created = BudgetTemplateItem.objects.get_or_create(
+            template=template,
+            product=product,
+            defaults={"quantity": quantity},
+        )
+        if not created:
+            item.quantity += quantity
+            item.save(update_fields=["quantity"])
+        return Response(BudgetTemplateItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="remove-item")
+    def remove_item(self, request, pk=None):
+        template = self.get_object()
+        item = get_object_or_404(BudgetTemplateItem, id=request.data.get("item_id"), template=template)
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class BudgetTemplateItemViewSet(viewsets.ModelViewSet):
     queryset = BudgetTemplateItem.objects.select_related("template", "product")
     serializer_class = BudgetTemplateItemSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
+
+
+class ProductAutocompleteAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        q = request.query_params.get("q", "").strip()
+        queryset = Products.objects.filter(is_active=True)
+        if q:
+            queryset = queryset.filter(title__icontains=q)
+        queryset = queryset.order_by("title")[:20]
+        data = [{"id": p.id, "title": p.title, "price": str(p.price)} for p in queryset]
+        return Response(data)

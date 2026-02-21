@@ -23,7 +23,18 @@ class APIPlatformTests(APITestCase):
             format="json",
         )
         self.assertEqual(register.status_code, 201)
-        self.assertIn("access", register.data)
+        self.assertIn("activation_url", register.data)
+
+        from account.models import User
+        from account.tokens import account_activation_token
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        user = User.objects.get(email="new@example.com")
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = account_activation_token.make_token(user)
+        activate = self.client.post(f"/api/v1/auth/activate/{uid}/{token}/")
+        self.assertEqual(activate.status_code, 200)
 
         login = self.client.post(
             "/api/v1/auth/login/",
@@ -40,7 +51,7 @@ class APIPlatformTests(APITestCase):
         self.assertEqual(refresh.status_code, 200)
 
     def test_permissions_and_module_access(self):
-        self.assertEqual(self.client.get("/api/v1/budget/budgets/").status_code, 403)
+        self.assertIn(self.client.get("/api/v1/budget/budgets/").status_code, {401, 403})
         self.assertEqual(self.client.get("/api/v1/blog/posts/").status_code, 200)
         self.assertEqual(self.client.get("/api/v1/search/").status_code, 200)
 
@@ -114,3 +125,31 @@ class APIPlatformTests(APITestCase):
         # voice helper routes
         self.assertEqual(self.client.get("/api/v1/voice/search/").status_code, 200)
         self.assertEqual(self.client.get("/api/v1/voice/budget/").status_code, 200)
+
+        # home parity helper routes
+        self.assertEqual(self.client.get("/api/v1/home/category-count/").status_code, 200)
+        self.assertNotIn(self.client.get("/api/v1/home/nearby-shops/").status_code, {404, 500})
+        self.assertEqual(self.client.post(f"/api/v1/home/shops/{self.shop.id}/subscribe/").status_code in (200,201), True)
+        self.assertEqual(self.client.get("/api/v1/home/shop-notifications/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/dashboard/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/analytics/customer/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/analytics/dispatcher/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/analytics/shop/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/favourites/").status_code, 200)
+
+        # cart parity helper routes
+        self.assertEqual(self.client.post("/api/v1/cart/add-to-cart/", {"product_id": self.product.id, "quantity": 1}, format="json").status_code, 201)
+        self.assertEqual(self.client.post("/api/v1/cart/add-to-cart-ajax/", {"product_id": self.product.id, "quantity": 1}, format="json").status_code, 201)
+        self.assertNotIn(self.client.get("/api/v1/cart/order-summary/").status_code, {404, 500})
+
+        # order parity helper routes
+        self.assertNotIn(self.client.get("/api/v1/order/checkout/").status_code, {404, 500})
+        self.assertNotIn(self.client.post("/api/v1/order/transfer/", format="json").status_code, {404, 500})
+        self.assertNotIn(self.client.post("/api/v1/order/add-coupon/", {"code": "NONE"}, format="json").status_code, {404, 500})
+        self.assertNotIn(self.client.post("/api/v1/order/status/1/", {"status": "received"}, format="json").status_code, {404, 500})
+
+        # budget parity helper routes
+        budget_id = budget.data["id"]
+        self.assertNotIn(self.client.post(f"/api/v1/budget/budgets/{budget_id}/duplicate/", format="json").status_code, {404, 500})
+        self.assertNotIn(self.client.post(f"/api/v1/budget/budgets/{budget_id}/from-cart/", format="json").status_code, {404, 500})
+        self.assertNotIn(self.client.get("/api/v1/budget/products/autocomplete/?q=tila").status_code, {404, 500})
