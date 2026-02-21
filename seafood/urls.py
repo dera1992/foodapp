@@ -5,15 +5,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from seafood.api.docs import DocsFallbackView, SchemaFallbackView
-
-HAS_DRF_SPECTACULAR = importlib.util.find_spec('drf_spectacular') is not None
-if HAS_DRF_SPECTACULAR:
-    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-
-schema_view = SpectacularAPIView.as_view() if HAS_DRF_SPECTACULAR else SchemaFallbackView.as_view()
-docs_view = SpectacularSwaggerView.as_view(url_name='api-schema') if HAS_DRF_SPECTACULAR else DocsFallbackView.as_view()
-
 urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='api-schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='api-schema'), name='api-docs'),

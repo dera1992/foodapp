@@ -1,7 +1,8 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
+from rest_framework import serializers
+from rest_framework.views import APIView
 
-from seafood.api.schema import DocumentedAPIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -16,6 +17,12 @@ from foodCreate.models import Products
 from order.models import Order
 
 from .permissions import IsOwnerOrReadOnly
+from drf_spectacular.utils import extend_schema
+
+
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
 
 
 class BudgetViewSet(viewsets.ModelViewSet):
@@ -151,9 +158,11 @@ class BudgetTemplateItemViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
 
 
-class ProductAutocompleteAPIView(DocumentedAPIView):
+class ProductAutocompleteAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         q = request.query_params.get("q", "").strip()
         queryset = Products.objects.filter(is_active=True)

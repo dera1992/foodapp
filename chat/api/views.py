@@ -1,10 +1,10 @@
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
+from rest_framework import serializers
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
-from seafood.api.schema import DocumentedAPIView
 
 from account.models import Shop, User
 from chat.models import Message
@@ -12,6 +12,12 @@ from chat.serializers import MessageSerializer
 from foodCreate.models import Products
 
 from .permissions import IsOwnerOrReadOnly
+from drf_spectacular.utils import extend_schema
+
+
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -23,9 +29,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(Q(sender=self.request.user) | Q(receiver=self.request.user))
 
 
-class InboxAPIView(DocumentedAPIView):
+class InboxAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         messages = (
             Message.objects.select_related("shop", "sender", "receiver", "product")
@@ -59,9 +67,11 @@ class InboxAPIView(DocumentedAPIView):
         return Response({"results": conversations})
 
 
-class ThreadAPIView(DocumentedAPIView):
+class ThreadAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, shop_id, user_id):
         shop = get_object_or_404(Shop, id=shop_id)
         other_user = get_object_or_404(User, id=user_id)
@@ -83,9 +93,11 @@ class ThreadAPIView(DocumentedAPIView):
         return Response({"results": MessageSerializer(messages, many=True).data})
 
 
-class ThreadMessagesAPIView(DocumentedAPIView):
+class ThreadMessagesAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, shop_id, user_id):
         shop = get_object_or_404(Shop, id=shop_id)
         other_user = get_object_or_404(User, id=user_id)
@@ -103,9 +115,11 @@ class ThreadMessagesAPIView(DocumentedAPIView):
         return Response({"messages": MessageSerializer(queryset, many=True).data})
 
 
-class SendMessageAPIView(DocumentedAPIView):
+class SendMessageAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         receiver_id = request.data.get("receiver_id")
         shop_id = request.data.get("shop_id")

@@ -1,9 +1,9 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
+from rest_framework import serializers
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
-from seafood.api.schema import DocumentedAPIView
 
 from order.models import Address, Coupon, Lga, Order, OrderItem, State
 from order.serializers import (
@@ -16,6 +16,12 @@ from order.serializers import (
 )
 
 from .permissions import IsOwnerOrReadOnly
+from drf_spectacular.utils import extend_schema
+
+
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
 
 
 class StateViewSet(viewsets.ModelViewSet):
@@ -107,9 +113,11 @@ class CouponViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
 
-class LoadCitiesAPIView(DocumentedAPIView):
+class LoadCitiesAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         state_id = request.query_params.get("state")
         if not state_id:
@@ -118,25 +126,31 @@ class LoadCitiesAPIView(DocumentedAPIView):
         return Response(LgaSerializer(cities, many=True).data)
 
 
-class UserOrdersAPIView(DocumentedAPIView):
+class UserOrdersAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         orders = Order.objects.filter(user=request.user).order_by("-created")
         return Response(OrderSerializer(orders, many=True).data)
 
 
-class OwnerOrdersAPIView(DocumentedAPIView):
+class OwnerOrdersAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         orders = Order.objects.filter(items__item__shop__owner=request.user).distinct().order_by("-created")
         return Response(OrderSerializer(orders, many=True).data)
 
 
-class CheckoutSummaryAPIView(DocumentedAPIView):
+class CheckoutSummaryAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         order = Order.objects.filter(user=request.user, is_ordered=False).first()
         if not order:
@@ -150,9 +164,11 @@ class CheckoutSummaryAPIView(DocumentedAPIView):
         )
 
 
-class TransferAPIView(DocumentedAPIView):
+class TransferAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         order = Order.objects.filter(user=request.user, is_ordered=False).first()
         if not order:
@@ -165,9 +181,11 @@ class TransferAPIView(DocumentedAPIView):
         return Response(OrderSerializer(order).data)
 
 
-class VerifyPaymentByRefAPIView(DocumentedAPIView):
+class VerifyPaymentByRefAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, ref):
         order = get_object_or_404(Order, ref=ref)
         if not (request.user.is_staff or order.user == request.user):
@@ -177,9 +195,11 @@ class VerifyPaymentByRefAPIView(DocumentedAPIView):
         return Response({"verified": verified, "order": OrderSerializer(order).data})
 
 
-class AddCouponAPIView(DocumentedAPIView):
+class AddCouponAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         code = request.data.get("code")
         if not code:
@@ -195,9 +215,11 @@ class AddCouponAPIView(DocumentedAPIView):
         return Response(OrderSerializer(order).data)
 
 
-class OrderTrackingByRefAPIView(DocumentedAPIView):
+class OrderTrackingByRefAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, ref=None):
         reference = ref or request.query_params.get("ref")
         if not reference:
@@ -206,9 +228,11 @@ class OrderTrackingByRefAPIView(DocumentedAPIView):
         return Response({"status": order.get_status_label(), "steps": order.get_tracking_steps()})
 
 
-class UpdateOrderStatusAPIView(DocumentedAPIView):
+class UpdateOrderStatusAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, order_id):
         order = Order.objects.filter(id=order_id).first()
         if not order:

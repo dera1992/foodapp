@@ -2,9 +2,9 @@ from django.core.mail import EmailMessage
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
+from rest_framework import serializers
+from rest_framework.views import APIView
 from rest_framework.response import Response
-
-from seafood.api.schema import DocumentedAPIView
 
 from account.models import Profile
 from foodCreate.models import Products
@@ -12,6 +12,12 @@ from owner.models import Affiliate, Information
 from owner.serializers import AffiliateSerializer, InformationSerializer
 
 from .permissions import IsOwnerOrReadOnly
+from drf_spectacular.utils import extend_schema
+
+
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
 
 
 class InformationViewSet(viewsets.ModelViewSet):
@@ -50,9 +56,11 @@ class AffiliateViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
 
-class MyCartAPIView(DocumentedAPIView):
+class MyCartAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         myab_list = Products.objects.filter(shop__owner=request.user)
         profile = Profile.objects.filter(user=request.user).first()
@@ -71,17 +79,21 @@ class MyCartAPIView(DocumentedAPIView):
         )
 
 
-class BookmarkedAPIView(DocumentedAPIView):
+class BookmarkedAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         bookmarked = Products.objects.filter(favourite=request.user)
         return Response({"results": [{"id": p.id, "title": p.title} for p in bookmarked]})
 
 
-class DeleteOrHidePostAPIView(DocumentedAPIView):
+class DeleteOrHidePostAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, pk):
         ad = get_object_or_404(Products, id=pk)
         if request.user != ad.shop.owner:
@@ -91,24 +103,30 @@ class DeleteOrHidePostAPIView(DocumentedAPIView):
         return Response({"detail": "Post hidden successfully"})
 
 
-class AboutAPIView(DocumentedAPIView):
+class AboutAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         affiliates = Affiliate.objects.all()[:10]
         return Response(AffiliateSerializer(affiliates, many=True).data)
 
 
-class FAQAPIView(DocumentedAPIView):
+class FAQAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         return Response({"detail": "FAQ endpoint available"})
 
 
-class PaymentStatusAPIView(DocumentedAPIView):
+class PaymentStatusAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, state):
         if state not in {"success", "failure"}:
             return Response({"detail": "Invalid state"}, status=status.HTTP_400_BAD_REQUEST)

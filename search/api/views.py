@@ -1,17 +1,26 @@
 from rest_framework import permissions
+from rest_framework import serializers
+from rest_framework.views import APIView
 
-from seafood.api.schema import DocumentedAPIView
 from rest_framework.response import Response
 
 from foodCreate.serializers import ProductsSerializer
 from search.recommendations import get_recommended_products
 from search.serializers import SearchQuerySerializer
 from search.services import filter_products
+from drf_spectacular.utils import extend_schema
 
 
-class SearchAPIView(DocumentedAPIView):
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
+
+
+class SearchAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         serializer = SearchQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
@@ -27,9 +36,11 @@ class SearchAPIView(DocumentedAPIView):
         return Response(ProductsSerializer(qs[:50], many=True).data)
 
 
-class RecommendationsAPIView(DocumentedAPIView):
+class RecommendationsAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         recommended_products, user_location = get_recommended_products(request.user)
         return Response(

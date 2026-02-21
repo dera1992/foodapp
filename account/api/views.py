@@ -5,9 +5,9 @@ from django.template.loader import get_template
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import permissions, status, viewsets
+from rest_framework import serializers
+from rest_framework.views import APIView
 from rest_framework.response import Response
-
-from seafood.api.schema import DocumentedAPIView
 
 from account.models import (
     DispatcherProfile,
@@ -36,11 +36,19 @@ from account.tokens import account_activation_token
 from .filters import ShopFilter, UserFilter
 from .jwt_utils import create_token_pair, decode_refresh_token
 from .permissions import IsOwnerOrReadOnly
+from drf_spectacular.utils import extend_schema
 
 
-class RegisterAPIView(DocumentedAPIView):
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
+
+
+class RegisterAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -79,9 +87,11 @@ class RegisterAPIView(DocumentedAPIView):
         )
 
 
-class ActivateAccountAPIView(DocumentedAPIView):
+class ActivateAccountAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, uidb64, token):
         try:
             user_id = force_str(urlsafe_base64_decode(uidb64))
@@ -98,9 +108,11 @@ class ActivateAccountAPIView(DocumentedAPIView):
         return Response({"detail": "Account activated successfully"})
 
 
-class LoginAPIView(DocumentedAPIView):
+class LoginAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
@@ -112,9 +124,11 @@ class LoginAPIView(DocumentedAPIView):
         return Response(create_token_pair(user))
 
 
-class RefreshAPIView(DocumentedAPIView):
+class RefreshAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         token = request.data.get("refresh")
         if not token:
@@ -127,9 +141,11 @@ class RefreshAPIView(DocumentedAPIView):
         return Response(create_token_pair(user))
 
 
-class LogoutAPIView(DocumentedAPIView):
+class LogoutAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         refresh = request.data.get("refresh")
         if refresh:
@@ -142,16 +158,20 @@ class LogoutAPIView(DocumentedAPIView):
         return Response({"detail": "Logged out successfully"})
 
 
-class MeAPIView(DocumentedAPIView):
+class MeAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
 
-class ChooseRoleAPIView(DocumentedAPIView):
+class ChooseRoleAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         role = request.data.get("role")
         if role not in {"customer", "shop", "dispatcher"}:
@@ -161,9 +181,11 @@ class ChooseRoleAPIView(DocumentedAPIView):
         return Response(UserSerializer(request.user).data)
 
 
-class PasswordChangeAPIView(DocumentedAPIView):
+class PasswordChangeAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         old_password = request.data.get("old_password")
         new_password = request.data.get("new_password")
@@ -180,9 +202,11 @@ class PasswordChangeAPIView(DocumentedAPIView):
         return Response({"detail": "Password changed successfully"})
 
 
-class PasswordResetRequestAPIView(DocumentedAPIView):
+class PasswordResetRequestAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         email = request.data.get("email")
         user = User.objects.filter(email=email).first()
@@ -205,9 +229,11 @@ class PasswordResetRequestAPIView(DocumentedAPIView):
         return Response({"detail": "If the email exists, a reset link has been sent."})
 
 
-class PasswordResetConfirmAPIView(DocumentedAPIView):
+class PasswordResetConfirmAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, uidb64, token):
         new_password = request.data.get("new_password")
         if not new_password:
@@ -227,9 +253,11 @@ class PasswordResetConfirmAPIView(DocumentedAPIView):
         return Response({"detail": "Password reset successful"})
 
 
-class CustomerSetupAPIView(DocumentedAPIView):
+class CustomerSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         profile, _ = Profile.objects.get_or_create(user=request.user)
         if request.data.get("skip"):
@@ -245,9 +273,11 @@ class CustomerSetupAPIView(DocumentedAPIView):
         return Response(serializer.data)
 
 
-class ShopInfoSetupAPIView(DocumentedAPIView):
+class ShopInfoSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
         serializer = ShopSerializer(shop, data=request.data, partial=True)
@@ -256,9 +286,11 @@ class ShopInfoSetupAPIView(DocumentedAPIView):
         return Response(serializer.data)
 
 
-class ShopAddressSetupAPIView(DocumentedAPIView):
+class ShopAddressSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
         fields = {k: v for k, v in request.data.items() if k in {"address", "city", "state", "country", "postal_code", "latitude", "longitude"}}
@@ -268,9 +300,11 @@ class ShopAddressSetupAPIView(DocumentedAPIView):
         return Response(serializer.data)
 
 
-class ShopDocsSetupAPIView(DocumentedAPIView):
+class ShopDocsSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
         serializer = ShopSerializer(shop, data={"business_document": request.data.get("business_document")}, partial=True)
@@ -279,9 +313,11 @@ class ShopDocsSetupAPIView(DocumentedAPIView):
         return Response(serializer.data)
 
 
-class ShopPlanSetupAPIView(DocumentedAPIView):
+class ShopPlanSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
         plan_id = request.data.get("plan")
@@ -317,9 +353,11 @@ class ShopPlanSetupAPIView(DocumentedAPIView):
         return Response({"detail": "Shop onboarding complete", "shop_id": shop.id})
 
 
-class DispatcherPersonalSetupAPIView(DocumentedAPIView):
+class DispatcherPersonalSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         profile, _ = DispatcherProfile.objects.get_or_create(user=request.user)
         serializer = DispatcherProfileSerializer(profile, data=request.data, partial=True)
@@ -328,9 +366,11 @@ class DispatcherPersonalSetupAPIView(DocumentedAPIView):
         return Response(serializer.data)
 
 
-class DispatcherVehicleSetupAPIView(DocumentedAPIView):
+class DispatcherVehicleSetupAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         profile, _ = DispatcherProfile.objects.get_or_create(user=request.user)
         fields = {k: v for k, v in request.data.items() if k in {"vehicle_type", "plate_number"}}

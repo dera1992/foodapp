@@ -1,14 +1,20 @@
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, viewsets
+from rest_framework import serializers
+from rest_framework.views import APIView
 from rest_framework.response import Response
-
-from seafood.api.schema import DocumentedAPIView
 
 from blog.models import Category, Post
 from blog.serializers import CategorySerializer, PostSerializer
 
 from .permissions import IsOwnerOrReadOnly
+from drf_spectacular.utils import extend_schema
+
+
+class APIPayloadSerializer(serializers.Serializer):
+    pass
+
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -35,17 +41,21 @@ class PostViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
 
 
-class PostBySlugAPIView(DocumentedAPIView):
+class PostBySlugAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, slug):
         post = get_object_or_404(Post, slug=slug)
         return Response(PostSerializer(post).data)
 
 
-class CategoryCountAPIView(DocumentedAPIView):
+class CategoryCountAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = APIPayloadSerializer
 
+    @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         counts = Post.objects.values("categories__title").annotate(total=Count("id")).order_by("-total")
         return Response(list(counts))
