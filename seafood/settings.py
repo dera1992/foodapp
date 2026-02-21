@@ -41,7 +41,21 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 # Application definition
 
-GIS_ENABLED = env.bool("GIS_ENABLED", default=bool(find_library("gdal")))
+def _can_enable_gis():
+    if not find_library("gdal"):
+        return False
+    try:
+        from django.contrib.gis import gdal  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+GIS_ENABLED = env.bool("GIS_ENABLED", default=_can_enable_gis())
+HAS_DJANGO_FILTERS = importlib.util.find_spec("django_filters") is not None
+HAS_DRF_SPECTACULAR = importlib.util.find_spec("drf_spectacular") is not None
+HAS_SIMPLEJWT = importlib.util.find_spec("rest_framework_simplejwt") is not None
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -51,10 +65,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'rest_framework',
-    'django_filters',
-    'drf_spectacular',
-    'rest_framework_simplejwt.token_blacklist',
-
     'account',
     'blog',
     'foodCreate.apps.FoodcreateConfig',

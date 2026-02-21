@@ -23,25 +23,39 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
+class OrderAPIView(APIView):
+    serializer_class = APIPayloadSerializer
 
-class StateViewSet(viewsets.ModelViewSet):
+    def _apply_status_flag(self, order, status_key):
+        if status_key == "being_delivered":
+            order.being_delivered = True
+        elif status_key == "received":
+            order.received = True
+        elif status_key == "is_ordered":
+            order.is_ordered = True
+        else:
+            return False
+        return True
+
+    def _can_manage_order(self, user, order):
+        return user.is_staff or order.user == user
+
+
+class PublicReadAdminWriteViewSet(viewsets.ModelViewSet):
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+
+class StateViewSet(PublicReadAdminWriteViewSet):
     queryset = State.objects.all()
     serializer_class = StateSerializer
 
-    def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
-            return [permissions.AllowAny()]
-        return [permissions.IsAdminUser()]
 
-
-class LgaViewSet(viewsets.ModelViewSet):
+class LgaViewSet(PublicReadAdminWriteViewSet):
     queryset = Lga.objects.select_related("state").all()
     serializer_class = LgaSerializer
-
-    def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
-            return [permissions.AllowAny()]
-        return [permissions.IsAdminUser()]
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):
@@ -76,12 +90,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not (request.user.is_staff or order.user == request.user):
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
         status_key = request.data.get("status")
-        if status_key == "being_delivered":
-            order.being_delivered = True
-        elif status_key == "received":
-            order.received = True
-        elif status_key == "is_ordered":
-            order.is_ordered = True
+        if status_key:
+            if status_key == "being_delivered":
+                order.being_delivered = True
+            elif status_key == "received":
+                order.received = True
+            elif status_key == "is_ordered":
+                order.is_ordered = True
         order.save()
         return Response(OrderSerializer(order).data)
 
@@ -103,19 +118,13 @@ class AddressViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(user=self.request.user)
 
 
-class CouponViewSet(viewsets.ModelViewSet):
+class CouponViewSet(PublicReadAdminWriteViewSet):
     queryset = Coupon.objects.all()
     serializer_class = CouponSerializer
 
-    def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
-            return [permissions.AllowAny()]
-        return [permissions.IsAdminUser()]
 
-
-class LoadCitiesAPIView(APIView):
+class LoadCitiesAPIView(OrderAPIView):
     permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -126,9 +135,8 @@ class LoadCitiesAPIView(APIView):
         return Response(LgaSerializer(cities, many=True).data)
 
 
-class UserOrdersAPIView(APIView):
+class UserOrdersAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -136,9 +144,8 @@ class UserOrdersAPIView(APIView):
         return Response(OrderSerializer(orders, many=True).data)
 
 
-class OwnerOrdersAPIView(APIView):
+class OwnerOrdersAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -146,9 +153,8 @@ class OwnerOrdersAPIView(APIView):
         return Response(OrderSerializer(orders, many=True).data)
 
 
-class CheckoutSummaryAPIView(APIView):
+class CheckoutSummaryAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -164,9 +170,8 @@ class CheckoutSummaryAPIView(APIView):
         )
 
 
-class TransferAPIView(APIView):
+class TransferAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
@@ -181,23 +186,21 @@ class TransferAPIView(APIView):
         return Response(OrderSerializer(order).data)
 
 
-class VerifyPaymentByRefAPIView(APIView):
+class VerifyPaymentByRefAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, ref):
         order = get_object_or_404(Order, ref=ref)
-        if not (request.user.is_staff or order.user == request.user):
+        if not self._can_manage_order(request.user, order):
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
         order.items.all().update(is_ordered=True)
         verified = order.verify_payment()
         return Response({"verified": verified, "order": OrderSerializer(order).data})
 
 
-class AddCouponAPIView(APIView):
+class AddCouponAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
@@ -215,9 +218,8 @@ class AddCouponAPIView(APIView):
         return Response(OrderSerializer(order).data)
 
 
-class OrderTrackingByRefAPIView(APIView):
+class OrderTrackingByRefAPIView(OrderAPIView):
     permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, ref=None):
@@ -228,26 +230,19 @@ class OrderTrackingByRefAPIView(APIView):
         return Response({"status": order.get_status_label(), "steps": order.get_tracking_steps()})
 
 
-class UpdateOrderStatusAPIView(APIView):
+class UpdateOrderStatusAPIView(OrderAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, order_id):
         order = Order.objects.filter(id=order_id).first()
         if not order:
             return Response({"detail": "Order not found"}, status=status.HTTP_400_BAD_REQUEST)
-        if not (request.user.is_staff or order.user == request.user):
+        if not self._can_manage_order(request.user, order):
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
 
         status_key = request.data.get("status")
-        if status_key == "being_delivered":
-            order.being_delivered = True
-        elif status_key == "received":
-            order.received = True
-        elif status_key == "is_ordered":
-            order.is_ordered = True
-        else:
+        if not self._apply_status_flag(order, status_key):
             return Response({"detail": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
         order.save()
         return Response(OrderSerializer(order).data)

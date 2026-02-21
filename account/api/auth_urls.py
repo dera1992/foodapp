@@ -14,19 +14,20 @@ from .views import (
     PasswordResetRequestAPIView,
     RefreshAPIView,
     RegisterAPIView,
+    SocialLoginAPIView,
     ShopAddressSetupAPIView,
     ShopDocsSetupAPIView,
     ShopInfoSetupAPIView,
     ShopPlanSetupAPIView,
 )
 
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
     path('register/', RegisterAPIView.as_view(), name='api-register'),
     path('activate/<str:uidb64>/<str:token>/', ActivateAccountAPIView.as_view(), name='api-activate'),
-    path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('login/', LoginAPIView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', RefreshAPIView.as_view(), name='token_refresh'),
+    path('social/login/', SocialLoginAPIView.as_view(), name='api-social-login'),
     path('logout/', LogoutAPIView.as_view(), name='api-logout'),
     path('me/', MeAPIView.as_view(), name='api-me'),
     path('choose-role/', ChooseRoleAPIView.as_view(), name='api-choose-role'),

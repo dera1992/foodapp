@@ -19,6 +19,17 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
+class OwnerAPIView(APIView):
+    serializer_class = APIPayloadSerializer
+
+
+class PublicOwnerAPIView(OwnerAPIView):
+    permission_classes = [permissions.AllowAny]
+
+
+class AuthenticatedOwnerAPIView(OwnerAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
 
 class InformationViewSet(viewsets.ModelViewSet):
     queryset = Information.objects.all()
@@ -56,9 +67,7 @@ class AffiliateViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
 
-class MyCartAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class MyCartAPIView(AuthenticatedOwnerAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -79,9 +88,7 @@ class MyCartAPIView(APIView):
         )
 
 
-class BookmarkedAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class BookmarkedAPIView(AuthenticatedOwnerAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -89,9 +96,7 @@ class BookmarkedAPIView(APIView):
         return Response({"results": [{"id": p.id, "title": p.title} for p in bookmarked]})
 
 
-class DeleteOrHidePostAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class DeleteOrHidePostAPIView(AuthenticatedOwnerAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, pk):
@@ -103,9 +108,7 @@ class DeleteOrHidePostAPIView(APIView):
         return Response({"detail": "Post hidden successfully"})
 
 
-class AboutAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class AboutAPIView(PublicOwnerAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -113,18 +116,14 @@ class AboutAPIView(APIView):
         return Response(AffiliateSerializer(affiliates, many=True).data)
 
 
-class FAQAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class FAQAPIView(PublicOwnerAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         return Response({"detail": "FAQ endpoint available"})
 
 
-class PaymentStatusAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class PaymentStatusAPIView(PublicOwnerAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, state):

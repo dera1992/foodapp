@@ -3,7 +3,6 @@ from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework import serializers
 from rest_framework.views import APIView
-from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from account.models import Shop, User
@@ -19,6 +18,25 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
+class ChatAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = APIPayloadSerializer
+
+    def _get_conversation_participants(self, request, shop_id, user_id):
+        shop = get_object_or_404(Shop, id=shop_id)
+        other_user = get_object_or_404(User, id=user_id)
+        if shop.owner not in {request.user, other_user}:
+            return None, None
+        return shop, other_user
+
+    def _conversation_queryset(self, shop, request_user, other_user):
+        return (
+            Message.objects.select_related("shop", "sender", "receiver", "product")
+            .filter(shop=shop)
+            .filter(sender__in=[request_user, other_user], receiver__in=[request_user, other_user])
+            .order_by("timestamp")
+        )
+
 
 class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.select_related("shop", "sender", "receiver", "product")
@@ -29,10 +47,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(Q(sender=self.request.user) | Q(receiver=self.request.user))
 
 
-class InboxAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
-
+class InboxAPIView(ChatAPIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         messages = (
@@ -67,23 +82,14 @@ class InboxAPIView(APIView):
         return Response({"results": conversations})
 
 
-class ThreadAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
-
+class ThreadAPIView(ChatAPIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, shop_id, user_id):
-        shop = get_object_or_404(Shop, id=shop_id)
-        other_user = get_object_or_404(User, id=user_id)
-        if shop.owner not in {request.user, other_user}:
+        shop, other_user = self._get_conversation_participants(request, shop_id, user_id)
+        if not shop:
             return Response({"detail": "Invalid conversation."}, status=status.HTTP_400_BAD_REQUEST)
 
-        messages = (
-            Message.objects.select_related("shop", "sender", "receiver", "product")
-            .filter(shop=shop)
-            .filter(sender__in=[request.user, other_user], receiver__in=[request.user, other_user])
-            .order_by("timestamp")
-        )
+        messages = self._conversation_queryset(shop, request.user, other_user)
         Message.objects.filter(
             receiver=request.user,
             sender=other_user,
@@ -93,32 +99,21 @@ class ThreadAPIView(APIView):
         return Response({"results": MessageSerializer(messages, many=True).data})
 
 
-class ThreadMessagesAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
-
+class ThreadMessagesAPIView(ChatAPIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, shop_id, user_id):
-        shop = get_object_or_404(Shop, id=shop_id)
-        other_user = get_object_or_404(User, id=user_id)
-        if shop.owner not in {request.user, other_user}:
+        shop, other_user = self._get_conversation_participants(request, shop_id, user_id)
+        if not shop:
             return Response({"detail": "Invalid conversation."}, status=status.HTTP_400_BAD_REQUEST)
+
         after_id = request.GET.get("after")
-        queryset = (
-            Message.objects.select_related("sender", "product")
-            .filter(shop=shop)
-            .filter(sender__in=[request.user, other_user], receiver__in=[request.user, other_user])
-            .order_by("timestamp")
-        )
+        queryset = self._conversation_queryset(shop, request.user, other_user)
         if after_id:
             queryset = queryset.filter(id__gt=after_id)
         return Response({"messages": MessageSerializer(queryset, many=True).data})
 
 
-class SendMessageAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
-
+class SendMessageAPIView(ChatAPIView):
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         receiver_id = request.data.get("receiver_id")

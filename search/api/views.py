@@ -15,10 +15,19 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
-
-class SearchAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+class BaseAPIView(APIView):
     serializer_class = APIPayloadSerializer
+
+
+class PublicAPIView(BaseAPIView):
+    permission_classes = [permissions.AllowAny]
+
+
+class AuthenticatedAPIView(BaseAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class SearchAPIView(PublicAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -36,9 +45,7 @@ class SearchAPIView(APIView):
         return Response(ProductsSerializer(qs[:50], many=True).data)
 
 
-class RecommendationsAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class RecommendationsAPIView(AuthenticatedAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):

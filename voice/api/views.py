@@ -16,10 +16,19 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
-
-class VoiceInterpretAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+class BaseAPIView(APIView):
     serializer_class = APIPayloadSerializer
+
+
+class PublicAPIView(BaseAPIView):
+    permission_classes = [permissions.AllowAny]
+
+
+class AuthenticatedAPIView(BaseAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class VoiceInterpretAPIView(PublicAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
@@ -28,18 +37,14 @@ class VoiceInterpretAPIView(APIView):
         return Response(json.loads(django_response.content.decode("utf-8")))
 
 
-class VoiceSearchAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class VoiceSearchAPIView(PublicAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         return Response({"detail": "Use POST /interpret/ with natural-language text for search mode."})
 
 
-class VoiceBudgetAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class VoiceBudgetAPIView(AuthenticatedAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
