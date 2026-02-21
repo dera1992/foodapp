@@ -3,6 +3,8 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from seafood.api.schema import EmptySerializer
+
 from cart.cart import Cart
 from cart.serializers import CartItemInputSerializer
 from foodCreate.models import Products
@@ -11,6 +13,7 @@ from order.models import Order
 
 class CartViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = EmptySerializer
 
     def list(self, request):
         cart = Cart(request)

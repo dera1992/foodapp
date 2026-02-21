@@ -3,7 +3,8 @@ from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 
 from account.models import Shop, User
 from chat.models import Message
@@ -22,7 +23,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(Q(sender=self.request.user) | Q(receiver=self.request.user))
 
 
-class InboxAPIView(APIView):
+class InboxAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -58,7 +59,7 @@ class InboxAPIView(APIView):
         return Response({"results": conversations})
 
 
-class ThreadAPIView(APIView):
+class ThreadAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, shop_id, user_id):
@@ -82,7 +83,7 @@ class ThreadAPIView(APIView):
         return Response({"results": MessageSerializer(messages, many=True).data})
 
 
-class ThreadMessagesAPIView(APIView):
+class ThreadMessagesAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, shop_id, user_id):
@@ -102,7 +103,7 @@ class ThreadMessagesAPIView(APIView):
         return Response({"messages": MessageSerializer(queryset, many=True).data})
 
 
-class SendMessageAPIView(APIView):
+class SendMessageAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):

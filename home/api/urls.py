@@ -2,9 +2,15 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AdDetailAPIView,
+    AdPreviewAPIView,
+    AdsListAPIView,
+    AllAdsListAPIView,
     CategoryCountAPIView,
     CustomerAnalyticsAPIView,
+    CustomerListAPIView,
     DashboardAPIView,
+    DeletePostAPIView,
     DispatcherAnalyticsAPIView,
     FavouriteAPIView,
     FavouritesListAPIView,
@@ -14,9 +20,11 @@ from .views import (
     ShopDetailAPIView,
     ShopNotificationsAPIView,
     SubmitReviewAPIView,
+    ToggleFavouriteAdAPIView,
     ToggleShopSubscriptionAPIView,
     WishlistItemViewSet,
     WishlistNotificationViewSet,
+    WishlistPreferencesAPIView,
 )
 
 router = DefaultRouter()
@@ -37,4 +45,12 @@ urlpatterns = [
     path("nearby-shops/", NearbyShopsAPIView.as_view(), name="api-nearby-shops"),
     path("shops/<int:shop_id>/subscribe/", ToggleShopSubscriptionAPIView.as_view(), name="api-toggle-shop-subscription"),
     path("shop-notifications/", ShopNotificationsAPIView.as_view(), name="api-shop-notifications"),
+    path("ads/", AdsListAPIView.as_view(), name="api-ads-list"),
+    path("ads/all/", AllAdsListAPIView.as_view(), name="api-all-ads-list"),
+    path("ads/customers/", CustomerListAPIView.as_view(), name="api-customer-list"),
+    path("ads/<int:id>/toggle-favourite/", ToggleFavouriteAdAPIView.as_view(), name="api-toggle-favourite-ad"),
+    path("ads/<int:pk>/delete/", DeletePostAPIView.as_view(), name="api-delete-post"),
+    path("wishlist/<int:item_id>/preferences/", WishlistPreferencesAPIView.as_view(), name="api-wishlist-preferences"),
+    path("ads/<int:id>/<slug:slug>/preview/", AdPreviewAPIView.as_view(), name="api-ad-preview"),
+    path("ads/<int:id>/<slug:slug>/", AdDetailAPIView.as_view(), name="api-ad-detail"),
 ] + router.urls

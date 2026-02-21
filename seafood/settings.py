@@ -42,10 +42,6 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 # Application definition
 
 GIS_ENABLED = env.bool("GIS_ENABLED", default=bool(find_library("gdal")))
-HAS_DJANGO_FILTERS = importlib.util.find_spec('django_filters') is not None
-HAS_DRF_SPECTACULAR = importlib.util.find_spec('drf_spectacular') is not None
-HAS_SIMPLEJWT = importlib.util.find_spec('rest_framework_simplejwt') is not None
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -55,6 +51,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'rest_framework',
+    'django_filters',
+    'drf_spectacular',
+    'rest_framework_simplejwt.token_blacklist',
 
     'account',
     'blog',
@@ -368,8 +367,7 @@ AUTH_USER_MODEL = 'account.User'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -393,24 +391,11 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:3000'])
 
-if HAS_SIMPLEJWT:
-    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
-
-if HAS_DJANGO_FILTERS:
-    REST_FRAMEWORK['DEFAULT_FILTER_BACKENDS'] = (
-        'django_filters.rest_framework.DjangoFilterBackend',
-        'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
-    )
-else:
-    REST_FRAMEWORK['DEFAULT_FILTER_BACKENDS'] = (
-        'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
-    )
-
-if HAS_DRF_SPECTACULAR:
-    REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
+REST_FRAMEWORK['DEFAULT_FILTER_BACKENDS'] = (
+    'django_filters.rest_framework.DjangoFilterBackend',
+    'rest_framework.filters.SearchFilter',
+    'rest_framework.filters.OrderingFilter',
+)
+REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
 
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:3000'])

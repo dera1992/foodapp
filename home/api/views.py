@@ -3,7 +3,8 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 
 from account.models import Shop, ShopFollower, ShopNotification
 from account.serializers import ShopSerializer
@@ -37,7 +38,7 @@ class WishlistNotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
 
 
-class DashboardAPIView(APIView):
+class DashboardAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -51,7 +52,7 @@ class DashboardAPIView(APIView):
         )
 
 
-class CustomerAnalyticsAPIView(APIView):
+class CustomerAnalyticsAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -71,7 +72,7 @@ class CustomerAnalyticsAPIView(APIView):
         )
 
 
-class DispatcherAnalyticsAPIView(APIView):
+class DispatcherAnalyticsAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -87,7 +88,7 @@ class DispatcherAnalyticsAPIView(APIView):
         )
 
 
-class ShopAnalyticsAPIView(APIView):
+class ShopAnalyticsAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -100,7 +101,7 @@ class ShopAnalyticsAPIView(APIView):
         return Response(payload)
 
 
-class ShopAPIView(APIView):
+class ShopAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -108,7 +109,7 @@ class ShopAPIView(APIView):
         return Response(ShopSerializer(shops, many=True).data)
 
 
-class ShopDetailAPIView(APIView):
+class ShopDetailAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, shop_id):
@@ -117,7 +118,7 @@ class ShopDetailAPIView(APIView):
         return Response({"shop": ShopSerializer(shop).data, "products": ProductsSerializer(products, many=True).data})
 
 
-class FavouriteAPIView(APIView):
+class FavouriteAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, product_id):
@@ -131,7 +132,7 @@ class FavouriteAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class FavouritesListAPIView(APIView):
+class FavouritesListAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -139,7 +140,7 @@ class FavouritesListAPIView(APIView):
         return Response(ProductsSerializer(products, many=True).data)
 
 
-class SubmitReviewAPIView(APIView):
+class SubmitReviewAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, post_id):
@@ -163,7 +164,7 @@ class SubmitReviewAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class CategoryCountAPIView(APIView):
+class CategoryCountAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -171,7 +172,7 @@ class CategoryCountAPIView(APIView):
         return Response(list(counts))
 
 
-class NearbyShopsAPIView(APIView):
+class NearbyShopsAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -195,7 +196,7 @@ class NearbyShopsAPIView(APIView):
         return Response(ShopSerializer(shops, many=True).data)
 
 
-class ToggleShopSubscriptionAPIView(APIView):
+class ToggleShopSubscriptionAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, shop_id):
@@ -207,7 +208,7 @@ class ToggleShopSubscriptionAPIView(APIView):
         return Response({"detail": "Unsubscribed", "subscribed": False})
 
 
-class ShopNotificationsAPIView(APIView):
+class ShopNotificationsAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -224,3 +225,85 @@ class ShopNotificationsAPIView(APIView):
             for n in notifications
         ]
         return Response(payload)
+
+
+class AdsListAPIView(DocumentedAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        category_slug = request.query_params.get("category_slug")
+        ads = Products.objects.filter(available=True, is_active=True).order_by("-created_at")
+        if category_slug:
+            ads = ads.filter(category__slug=category_slug)
+        return Response(ProductsSerializer(ads, many=True).data)
+
+
+class AllAdsListAPIView(DocumentedAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        ads = Products.objects.filter(is_active=True).order_by("-created_at")
+        return Response(ProductsSerializer(ads, many=True).data)
+
+
+class CustomerListAPIView(DocumentedAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        ads = Products.objects.filter(available=True, is_active=True).order_by("-created_at")
+        return Response(ProductsSerializer(ads, many=True).data)
+
+
+class AdDetailAPIView(DocumentedAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, id, slug):
+        ad = get_object_or_404(Products, id=id, slug=slug, is_active=True)
+        return Response(ProductsSerializer(ad).data)
+
+
+class AdPreviewAPIView(DocumentedAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, id, slug):
+        ad = get_object_or_404(Products, id=id, slug=slug)
+        images = list(ad.images.values_list("product_image", flat=True)[:3])
+        return Response({"ad": ProductsSerializer(ad).data, "images": images})
+
+
+class ToggleFavouriteAdAPIView(DocumentedAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        ad = get_object_or_404(Products, id=id)
+        if ad.favourite.filter(id=request.user.id).exists():
+            ad.favourite.remove(request.user)
+            WishlistItem.objects.filter(user=request.user, product=ad).delete()
+            is_favourite = False
+        else:
+            ad.favourite.add(request.user)
+            WishlistItem.objects.get_or_create(user=request.user, product=ad)
+            is_favourite = True
+        return Response({"is_favourite": is_favourite})
+
+
+class WishlistPreferencesAPIView(DocumentedAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, item_id):
+        item = get_object_or_404(WishlistItem, id=item_id, user=request.user)
+        item.notify_on_restock = bool(request.data.get("notify_on_restock"))
+        item.notify_on_price_drop = bool(request.data.get("notify_on_price_drop"))
+        item.save(update_fields=["notify_on_restock", "notify_on_price_drop"])
+        return Response(WishlistItemSerializer(item).data)
+
+
+class DeletePostAPIView(DocumentedAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, pk):
+        ad = get_object_or_404(Products, pk=pk)
+        if not (request.user.is_staff or ad.shop.owner_id == request.user.id):
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+        ad.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

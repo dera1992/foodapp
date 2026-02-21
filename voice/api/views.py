@@ -1,6 +1,8 @@
 import json
 
-from rest_framework import permissions, views
+from rest_framework import permissions
+
+from seafood.api.schema import DocumentedAPIView
 from rest_framework.response import Response
 
 from budget.models import Budget
@@ -8,7 +10,7 @@ from budget.serializers import BudgetSerializer
 from voice.views import interpret_voice
 
 
-class VoiceInterpretAPIView(views.APIView):
+class VoiceInterpretAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -17,14 +19,14 @@ class VoiceInterpretAPIView(views.APIView):
         return Response(json.loads(django_response.content.decode("utf-8")))
 
 
-class VoiceSearchAPIView(views.APIView):
+class VoiceSearchAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         return Response({"detail": "Use POST /interpret/ with natural-language text for search mode."})
 
 
-class VoiceBudgetAPIView(views.APIView):
+class VoiceBudgetAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):

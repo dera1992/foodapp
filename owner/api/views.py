@@ -3,7 +3,8 @@ from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 
 from account.models import Profile
 from foodCreate.models import Products
@@ -49,7 +50,7 @@ class AffiliateViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
 
-class MyCartAPIView(APIView):
+class MyCartAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -70,7 +71,7 @@ class MyCartAPIView(APIView):
         )
 
 
-class BookmarkedAPIView(APIView):
+class BookmarkedAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -78,7 +79,7 @@ class BookmarkedAPIView(APIView):
         return Response({"results": [{"id": p.id, "title": p.title} for p in bookmarked]})
 
 
-class DeleteOrHidePostAPIView(APIView):
+class DeleteOrHidePostAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
@@ -90,7 +91,7 @@ class DeleteOrHidePostAPIView(APIView):
         return Response({"detail": "Post hidden successfully"})
 
 
-class AboutAPIView(APIView):
+class AboutAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -98,14 +99,14 @@ class AboutAPIView(APIView):
         return Response(AffiliateSerializer(affiliates, many=True).data)
 
 
-class FAQAPIView(APIView):
+class FAQAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         return Response({"detail": "FAQ endpoint available"})
 
 
-class PaymentStatusAPIView(APIView):
+class PaymentStatusAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, state):

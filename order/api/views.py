@@ -2,7 +2,8 @@ from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 
 from order.models import Address, Coupon, Lga, Order, OrderItem, State
 from order.serializers import (
@@ -106,7 +107,7 @@ class CouponViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
 
-class LoadCitiesAPIView(APIView):
+class LoadCitiesAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -117,7 +118,7 @@ class LoadCitiesAPIView(APIView):
         return Response(LgaSerializer(cities, many=True).data)
 
 
-class UserOrdersAPIView(APIView):
+class UserOrdersAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -125,7 +126,7 @@ class UserOrdersAPIView(APIView):
         return Response(OrderSerializer(orders, many=True).data)
 
 
-class OwnerOrdersAPIView(APIView):
+class OwnerOrdersAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -133,7 +134,7 @@ class OwnerOrdersAPIView(APIView):
         return Response(OrderSerializer(orders, many=True).data)
 
 
-class CheckoutSummaryAPIView(APIView):
+class CheckoutSummaryAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -149,7 +150,7 @@ class CheckoutSummaryAPIView(APIView):
         )
 
 
-class TransferAPIView(APIView):
+class TransferAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -164,7 +165,7 @@ class TransferAPIView(APIView):
         return Response(OrderSerializer(order).data)
 
 
-class VerifyPaymentByRefAPIView(APIView):
+class VerifyPaymentByRefAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, ref):
@@ -176,7 +177,7 @@ class VerifyPaymentByRefAPIView(APIView):
         return Response({"verified": verified, "order": OrderSerializer(order).data})
 
 
-class AddCouponAPIView(APIView):
+class AddCouponAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -194,7 +195,7 @@ class AddCouponAPIView(APIView):
         return Response(OrderSerializer(order).data)
 
 
-class OrderTrackingByRefAPIView(APIView):
+class OrderTrackingByRefAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, ref=None):
@@ -205,7 +206,7 @@ class OrderTrackingByRefAPIView(APIView):
         return Response({"status": order.get_status_label(), "steps": order.get_tracking_steps()})
 
 
-class UpdateOrderStatusAPIView(APIView):
+class UpdateOrderStatusAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, order_id):

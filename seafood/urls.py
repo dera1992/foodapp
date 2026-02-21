@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from seafood.api.docs import DocsFallbackView, SchemaFallbackView
 
@@ -14,8 +15,8 @@ schema_view = SpectacularAPIView.as_view() if HAS_DRF_SPECTACULAR else SchemaFal
 docs_view = SpectacularSwaggerView.as_view(url_name='api-schema') if HAS_DRF_SPECTACULAR else DocsFallbackView.as_view()
 
 urlpatterns = [
-    path('api/schema/', schema_view, name='api-schema'),
-    path('api/docs/', docs_view, name='api-docs'),
+    path('api/schema/', SpectacularAPIView.as_view(), name='api-schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='api-schema'), name='api-docs'),
     path('api/v1/', include('seafood.api_urls')),
     path('admin/', admin.site.urls),
     path('account/', include('account.urls')),

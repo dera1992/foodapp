@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -150,7 +151,7 @@ class BudgetTemplateItemViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
 
 
-class ProductAutocompleteAPIView(APIView):
+class ProductAutocompleteAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):

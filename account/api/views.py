@@ -1,5 +1,3 @@
-import importlib.util
-
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage, send_mail
@@ -8,7 +6,8 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 
 from account.models import (
     DispatcherProfile,
@@ -39,7 +38,7 @@ from .jwt_utils import create_token_pair, decode_refresh_token
 from .permissions import IsOwnerOrReadOnly
 
 
-class RegisterAPIView(APIView):
+class RegisterAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -80,7 +79,7 @@ class RegisterAPIView(APIView):
         )
 
 
-class ActivateAccountAPIView(APIView):
+class ActivateAccountAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, uidb64, token):
@@ -99,7 +98,7 @@ class ActivateAccountAPIView(APIView):
         return Response({"detail": "Account activated successfully"})
 
 
-class LoginAPIView(APIView):
+class LoginAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -113,7 +112,7 @@ class LoginAPIView(APIView):
         return Response(create_token_pair(user))
 
 
-class RefreshAPIView(APIView):
+class RefreshAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -128,30 +127,29 @@ class RefreshAPIView(APIView):
         return Response(create_token_pair(user))
 
 
-class LogoutAPIView(APIView):
+class LogoutAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if importlib.util.find_spec("rest_framework_simplejwt") is not None:
-            refresh = request.data.get("refresh")
-            if refresh:
-                try:
-                    from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = request.data.get("refresh")
+        if refresh:
+            try:
+                from rest_framework_simplejwt.tokens import RefreshToken
 
-                    RefreshToken(refresh).blacklist()
-                except Exception:
-                    pass
+                RefreshToken(refresh).blacklist()
+            except Exception:
+                pass
         return Response({"detail": "Logged out successfully"})
 
 
-class MeAPIView(APIView):
+class MeAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
 
-class ChooseRoleAPIView(APIView):
+class ChooseRoleAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -163,7 +161,7 @@ class ChooseRoleAPIView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
-class PasswordChangeAPIView(APIView):
+class PasswordChangeAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -182,7 +180,7 @@ class PasswordChangeAPIView(APIView):
         return Response({"detail": "Password changed successfully"})
 
 
-class PasswordResetRequestAPIView(APIView):
+class PasswordResetRequestAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -207,7 +205,7 @@ class PasswordResetRequestAPIView(APIView):
         return Response({"detail": "If the email exists, a reset link has been sent."})
 
 
-class PasswordResetConfirmAPIView(APIView):
+class PasswordResetConfirmAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, uidb64, token):
@@ -229,7 +227,7 @@ class PasswordResetConfirmAPIView(APIView):
         return Response({"detail": "Password reset successful"})
 
 
-class CustomerSetupAPIView(APIView):
+class CustomerSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -247,7 +245,7 @@ class CustomerSetupAPIView(APIView):
         return Response(serializer.data)
 
 
-class ShopInfoSetupAPIView(APIView):
+class ShopInfoSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -258,7 +256,7 @@ class ShopInfoSetupAPIView(APIView):
         return Response(serializer.data)
 
 
-class ShopAddressSetupAPIView(APIView):
+class ShopAddressSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -270,7 +268,7 @@ class ShopAddressSetupAPIView(APIView):
         return Response(serializer.data)
 
 
-class ShopDocsSetupAPIView(APIView):
+class ShopDocsSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -281,7 +279,7 @@ class ShopDocsSetupAPIView(APIView):
         return Response(serializer.data)
 
 
-class ShopPlanSetupAPIView(APIView):
+class ShopPlanSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -319,7 +317,7 @@ class ShopPlanSetupAPIView(APIView):
         return Response({"detail": "Shop onboarding complete", "shop_id": shop.id})
 
 
-class DispatcherPersonalSetupAPIView(APIView):
+class DispatcherPersonalSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -330,7 +328,7 @@ class DispatcherPersonalSetupAPIView(APIView):
         return Response(serializer.data)
 
 
-class DispatcherVehicleSetupAPIView(APIView):
+class DispatcherVehicleSetupAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):

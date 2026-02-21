@@ -2,7 +2,8 @@ from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, viewsets
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
+from seafood.api.schema import DocumentedAPIView
 
 from blog.models import Category, Post
 from blog.serializers import CategorySerializer, PostSerializer
@@ -34,7 +35,7 @@ class PostViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
 
 
-class PostBySlugAPIView(APIView):
+class PostBySlugAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, slug):
@@ -42,7 +43,7 @@ class PostBySlugAPIView(APIView):
         return Response(PostSerializer(post).data)
 
 
-class CategoryCountAPIView(APIView):
+class CategoryCountAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):

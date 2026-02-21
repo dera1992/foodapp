@@ -3,6 +3,7 @@ from rest_framework.test import APITestCase
 
 from account.models import Profile, Shop, SubscriptionPlan, User
 from foodCreate.models import Category, Products
+from home.models import WishlistItem
 
 
 class APIPlatformTests(APITestCase):
@@ -153,3 +154,13 @@ class APIPlatformTests(APITestCase):
         self.assertNotIn(self.client.post(f"/api/v1/budget/budgets/{budget_id}/duplicate/", format="json").status_code, {404, 500})
         self.assertNotIn(self.client.post(f"/api/v1/budget/budgets/{budget_id}/from-cart/", format="json").status_code, {404, 500})
         self.assertNotIn(self.client.get("/api/v1/budget/products/autocomplete/?q=tila").status_code, {404, 500})
+
+        # remaining home legacy-style routes
+        self.assertEqual(self.client.get("/api/v1/home/ads/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/ads/all/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/home/ads/customers/").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/v1/home/ads/{self.product.id}/{self.product.slug}/").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/v1/home/ads/{self.product.id}/{self.product.slug}/preview/").status_code, 200)
+        self.assertEqual(self.client.post(f"/api/v1/home/ads/{self.product.id}/toggle-favourite/").status_code, 200)
+        wishlist_item = WishlistItem.objects.get_or_create(user=self.user, product=self.product)[0]
+        self.assertEqual(self.client.post(f"/api/v1/home/wishlist/{wishlist_item.id}/preferences/", {"notify_on_restock": True, "notify_on_price_drop": False}, format="json").status_code, 200)

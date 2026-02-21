@@ -1,4 +1,6 @@
-from rest_framework import permissions, views
+from rest_framework import permissions
+
+from seafood.api.schema import DocumentedAPIView
 from rest_framework.response import Response
 
 from foodCreate.serializers import ProductsSerializer
@@ -7,7 +9,7 @@ from search.serializers import SearchQuerySerializer
 from search.services import filter_products
 
 
-class SearchAPIView(views.APIView):
+class SearchAPIView(DocumentedAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -25,7 +27,7 @@ class SearchAPIView(views.APIView):
         return Response(ProductsSerializer(qs[:50], many=True).data)
 
 
-class RecommendationsAPIView(views.APIView):
+class RecommendationsAPIView(DocumentedAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
