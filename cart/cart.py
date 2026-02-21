@@ -43,13 +43,14 @@ class Cart(object):
         products = Products.objects.filter(id__in=product_ids)
         products_map = {product.id: product for product in products}
         for product_id, item in self.cart.items():
+            row = item.copy()
             product = products_map.get(int(product_id))
             if product:
-                item['product'] = product
-            item_price = Decimal(item['price'])
-            item['price'] = item_price
-            item['total_price'] = item_price * item['quantity']
-            yield item
+                row['product'] = product
+            item_price = Decimal(str(item['price']))
+            row['price'] = item_price
+            row['total_price'] = item_price * row['quantity']
+            yield row
 
     def __len__(self):
         return sum(item['quantity'] for item in self.cart.values())
