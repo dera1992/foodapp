@@ -1,9 +1,13 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
+    path('api/schema/', SpectacularAPIView.as_view(), name='api-schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='api-schema'), name='api-docs'),
+    path('api/v1/', include('seafood.api_urls')),
     path('admin/', admin.site.urls),
     path('account/', include('account.urls')),
     path('cart/', include('cart.urls', namespace='cart')),
@@ -19,10 +23,9 @@ urlpatterns = [
     path('',include('home.urls', namespace='home')),
     path('product_search/',include('search.urls', namespace='product_search')),
     path('hitcount/', include(('hitcount.urls', 'hitcount'), namespace='hitcount')),
-    # path('tracking/', include('tracking.urls')),
     path('ratings/', include('star_ratings.urls', namespace='ratings')),
     path("paystack/", include(('django_paystack.urls','paystack'),namespace='paystack')),
     path('ckeditor/', include('ckeditor_uploader.urls')),
-
 ]
-if settings.DEBUG:urlpatterns += static(settings.MEDIA_URL,document_root=settings.MEDIA_ROOT)
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
