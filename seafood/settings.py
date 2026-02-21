@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 
 import os
+import importlib.util
 from ctypes.util import find_library
 
 import environ
@@ -41,6 +42,9 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 # Application definition
 
 GIS_ENABLED = env.bool("GIS_ENABLED", default=bool(find_library("gdal")))
+HAS_DJANGO_FILTERS = importlib.util.find_spec('django_filters') is not None
+HAS_DRF_SPECTACULAR = importlib.util.find_spec('drf_spectacular') is not None
+HAS_SIMPLEJWT = importlib.util.find_spec('rest_framework_simplejwt') is not None
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -49,6 +53,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
+    'rest_framework',
 
     'account',
     'blog',
@@ -76,10 +82,18 @@ INSTALLED_APPS = [
     # 'ckeditor_uploader',
 ]
 
+if HAS_DJANGO_FILTERS:
+    INSTALLED_APPS.append('django_filters')
+if HAS_DRF_SPECTACULAR:
+    INSTALLED_APPS.append('drf_spectacular')
+if HAS_SIMPLEJWT:
+    INSTALLED_APPS.append('rest_framework_simplejwt.token_blacklist')
+
 if GIS_ENABLED:
     INSTALLED_APPS.append('django.contrib.gis')
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -350,3 +364,53 @@ CKEDITOR_CONFIGS = {
 }
 
 AUTH_USER_MODEL = 'account.User'
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    'EXCEPTION_HANDLER': 'seafood.api.exceptions.custom_exception_handler',
+}
+
+SIMPLE_JWT = {
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ROTATE_REFRESH_TOKENS': True,
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Seafood API',
+    'DESCRIPTION': 'Versioned API for web and mobile clients',
+    'VERSION': '1.0.0',
+}
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:3000'])
+
+if HAS_SIMPLEJWT:
+    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+
+if HAS_DJANGO_FILTERS:
+    REST_FRAMEWORK['DEFAULT_FILTER_BACKENDS'] = (
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    )
+else:
+    REST_FRAMEWORK['DEFAULT_FILTER_BACKENDS'] = (
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    )
+
+if HAS_DRF_SPECTACULAR:
+    REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
+
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:3000'])
