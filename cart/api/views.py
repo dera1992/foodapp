@@ -13,8 +13,21 @@ class CartViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = CartItemInputSerializer
 
+    def _cart(self, request):
+        return Cart(request)
+
+    def _validated_payload(self, request):
+        serializer = CartItemInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
+
+    def _validated_product(self, request):
+        payload = self._validated_payload(request)
+        product = get_object_or_404(Products, id=payload["product_id"])
+        return product, payload
+
     def list(self, request):
-        cart = Cart(request)
+        cart = self._cart(request)
         items = []
         for item in cart:
             product = item.get("product")
@@ -31,31 +44,25 @@ class CartViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"])
     def add(self, request):
-        serializer = CartItemInputSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        product = get_object_or_404(Products, id=serializer.validated_data["product_id"])
-        Cart(request).add(product=product, quantity=serializer.validated_data["quantity"])
+        product, payload = self._validated_product(request)
+        self._cart(request).add(product=product, quantity=payload["quantity"])
         return Response({"detail": "Item added"}, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
     def remove(self, request):
-        serializer = CartItemInputSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        product = get_object_or_404(Products, id=serializer.validated_data["product_id"])
-        Cart(request).remove(product)
+        product, _ = self._validated_product(request)
+        self._cart(request).remove(product)
         return Response({"detail": "Item removed"})
 
     @action(detail=False, methods=["post"])
     def update_quantity(self, request):
-        data = CartItemInputSerializer(data=request.data)
-        data.is_valid(raise_exception=True)
-        product = get_object_or_404(Products, id=data.validated_data["product_id"])
-        Cart(request).add(product=product, quantity=data.validated_data["quantity"], update_quantity=True)
+        product, payload = self._validated_product(request)
+        self._cart(request).add(product=product, quantity=payload["quantity"], update_quantity=True)
         return Response({"detail": "Quantity updated"})
 
     @action(detail=False, methods=["post"])
     def clear(self, request):
-        Cart(request).clear()
+        self._cart(request).clear()
         return Response({"detail": "Cart cleared"})
 
     @action(detail=False, methods=["post"], url_path="add-to-cart")
@@ -74,10 +81,8 @@ class CartViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"], url_path="remove-single-item-from-cart")
     def remove_single_item_from_cart(self, request):
-        serializer = CartItemInputSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        product = get_object_or_404(Products, id=serializer.validated_data["product_id"])
-        cart = Cart(request)
+        product, _ = self._validated_product(request)
+        cart = self._cart(request)
         cart_item = cart.cart.get(str(product.id))
         if not cart_item:
             return Response({"detail": "Item not in cart"}, status=status.HTTP_404_NOT_FOUND)

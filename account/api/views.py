@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage, send_mail
 from django.template.loader import get_template
@@ -8,6 +9,9 @@ from rest_framework import permissions, status, viewsets
 from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from social_django.utils import load_backend, load_strategy
 
 from account.models import (
     DispatcherProfile,
@@ -34,7 +38,6 @@ from account.serializers import (
 from account.tokens import account_activation_token
 
 from .filters import ShopFilter, UserFilter
-from .jwt_utils import create_token_pair, decode_refresh_token
 from .permissions import IsOwnerOrReadOnly
 from drf_spectacular.utils import extend_schema
 
@@ -43,13 +46,49 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
+class SocialLoginInputSerializer(serializers.Serializer):
+    provider = serializers.ChoiceField(choices=["google-oauth2", "facebook"])
+    access_token = serializers.CharField()
 
-class RegisterAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+
+class AccountAPIView(APIView):
+    """Shared helpers for account-related API views."""
+
     serializer_class = APIPayloadSerializer
+
+    def _get_user_from_uidb64(self, uidb64):
+        user_id = force_str(urlsafe_base64_decode(uidb64))
+        return User.objects.get(pk=user_id)
+
+    def _token_is_valid(self, user, token):
+        return account_activation_token.check_token(user, token) or default_token_generator.check_token(user, token)
+
+    def _update_user_role(self, user, role):
+        user.role = role
+        user.save(update_fields=["role"])
+
+    def _update_model_with_serializer(self, instance, serializer_class, payload, save_kwargs=None):
+        serializer = serializer_class(instance, data=payload, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(**(save_kwargs or {}))
+        return serializer
+
+    def _validate_password(self, password, user=None):
+        try:
+            validate_password(password, user=user)
+        except Exception as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)})
+
+
+class AuthAPIView(AccountAPIView):
+    permission_classes = [permissions.AllowAny]
+
+
+class RegisterAPIView(AuthAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
+        self._validate_password(request.data.get("password"), user=None)
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -78,70 +117,73 @@ class RegisterAPIView(APIView):
         email.content_subtype = "html"
         email.send(fail_silently=True)
 
-        return Response(
-            {
-                "detail": "Registration successful. Please activate your account from the email sent.",
-                "activation_url": activation_url,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        response_payload = {
+            "detail": "Registration successful. Please activate your account from the email sent.",
+        }
+        if settings.DEBUG:
+            response_payload["activation_url"] = activation_url
+        return Response(response_payload, status=status.HTTP_201_CREATED)
 
 
-class ActivateAccountAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class ActivateAccountAPIView(AuthAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, uidb64, token):
         try:
-            user_id = force_str(urlsafe_base64_decode(uidb64))
-            user = User.objects.get(pk=user_id)
+            user = self._get_user_from_uidb64(uidb64)
         except Exception:
             return Response({"detail": "Invalid activation link"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not account_activation_token.check_token(user, token):
-            if not default_token_generator.check_token(user, token):
-                return Response({"detail": "Invalid activation token"}, status=status.HTTP_400_BAD_REQUEST)
+        if not self._token_is_valid(user, token):
+            return Response({"detail": "Invalid activation token"}, status=status.HTTP_400_BAD_REQUEST)
 
         user.is_active = True
         user.save(update_fields=["is_active"])
         return Response({"detail": "Account activated successfully"})
 
 
-class LoginAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class LoginAPIView(AuthAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
-        email = request.data.get("email")
-        password = request.data.get("password")
-        user = User.objects.filter(email=email).first()
-        if not user or not user.check_password(password):
-            return Response({"detail": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+        serializer = TokenObtainPairSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data)
+
+
+class RefreshAPIView(AuthAPIView):
+
+    @extend_schema(responses=APIPayloadSerializer)
+    def post(self, request):
+        serializer = TokenRefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data)
+
+
+class SocialLoginAPIView(AuthAPIView):
+    serializer_class = SocialLoginInputSerializer
+
+    @extend_schema(request=SocialLoginInputSerializer, responses=APIPayloadSerializer)
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        provider = serializer.validated_data["provider"]
+        access_token = serializer.validated_data["access_token"]
+
+        strategy = load_strategy(request=request)
+        backend = load_backend(strategy=strategy, name=provider, redirect_uri=None)
+        user = backend.do_auth(access_token)
+        if not user:
+            return Response({"detail": "Social authentication failed"}, status=status.HTTP_401_UNAUTHORIZED)
         if not user.is_active:
             return Response({"detail": "Account is not active"}, status=status.HTTP_403_FORBIDDEN)
-        return Response(create_token_pair(user))
+
+        refresh = RefreshToken.for_user(user)
+        return Response({"refresh": str(refresh), "access": str(refresh.access_token)})
 
 
-class RefreshAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
-
-    @extend_schema(responses=APIPayloadSerializer)
-    def post(self, request):
-        token = request.data.get("refresh")
-        if not token:
-            return Response({"detail": "refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            payload = decode_refresh_token(token)
-            user = User.objects.get(id=payload["sub"])
-        except Exception:
-            return Response({"detail": "Invalid refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
-        return Response(create_token_pair(user))
-
-
-class LogoutAPIView(APIView):
+class LogoutAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = APIPayloadSerializer
 
@@ -158,7 +200,7 @@ class LogoutAPIView(APIView):
         return Response({"detail": "Logged out successfully"})
 
 
-class MeAPIView(APIView):
+class MeAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = APIPayloadSerializer
 
@@ -167,7 +209,7 @@ class MeAPIView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
-class ChooseRoleAPIView(APIView):
+class ChooseRoleAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = APIPayloadSerializer
 
@@ -181,7 +223,7 @@ class ChooseRoleAPIView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
-class PasswordChangeAPIView(APIView):
+class PasswordChangeAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = APIPayloadSerializer
 
@@ -197,14 +239,13 @@ class PasswordChangeAPIView(APIView):
         if not request.user.check_password(old_password):
             return Response({"detail": "Old password is incorrect"}, status=status.HTTP_400_BAD_REQUEST)
 
+        self._validate_password(new_password, user=request.user)
         request.user.set_password(new_password)
         request.user.save(update_fields=["password"])
         return Response({"detail": "Password changed successfully"})
 
 
-class PasswordResetRequestAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class PasswordResetRequestAPIView(AuthAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
@@ -229,9 +270,7 @@ class PasswordResetRequestAPIView(APIView):
         return Response({"detail": "If the email exists, a reset link has been sent."})
 
 
-class PasswordResetConfirmAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class PasswordResetConfirmAPIView(AuthAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, uidb64, token):
@@ -239,83 +278,77 @@ class PasswordResetConfirmAPIView(APIView):
         if not new_password:
             return Response({"detail": "new_password is required"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = force_str(urlsafe_base64_decode(uidb64))
-            user = User.objects.get(pk=user_id)
+            user = self._get_user_from_uidb64(uidb64)
         except Exception:
             return Response({"detail": "Invalid reset link"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not default_token_generator.check_token(user, token):
-            if not account_activation_token.check_token(user, token):
-                return Response({"detail": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
+        if not self._token_is_valid(user, token):
+            return Response({"detail": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
 
+        self._validate_password(new_password, user=user)
         user.set_password(new_password)
         user.save(update_fields=["password"])
         return Response({"detail": "Password reset successful"})
 
 
-class CustomerSetupAPIView(APIView):
+class CustomerSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         profile, _ = Profile.objects.get_or_create(user=request.user)
         if request.data.get("skip"):
-            request.user.role = "customer"
-            request.user.save(update_fields=["role"])
+            self._update_user_role(request.user, "customer")
             return Response({"detail": "Customer setup skipped", "role": request.user.role})
 
-        serializer = ProfileSerializer(profile, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
-        request.user.role = "customer"
-        request.user.save(update_fields=["role"])
+        serializer = self._update_model_with_serializer(
+            profile,
+            ProfileSerializer,
+            request.data,
+            save_kwargs={"user": request.user},
+        )
+        self._update_user_role(request.user, "customer")
         return Response(serializer.data)
 
 
-class ShopInfoSetupAPIView(APIView):
+class ShopInfoSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
-        serializer = ShopSerializer(shop, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(owner=request.user)
+        serializer = self._update_model_with_serializer(shop, ShopSerializer, request.data, save_kwargs={"owner": request.user})
         return Response(serializer.data)
 
 
-class ShopAddressSetupAPIView(APIView):
+class ShopAddressSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
         fields = {k: v for k, v in request.data.items() if k in {"address", "city", "state", "country", "postal_code", "latitude", "longitude"}}
-        serializer = ShopSerializer(shop, data=fields, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(owner=request.user)
+        serializer = self._update_model_with_serializer(shop, ShopSerializer, fields, save_kwargs={"owner": request.user})
         return Response(serializer.data)
 
 
-class ShopDocsSetupAPIView(APIView):
+class ShopDocsSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
-        serializer = ShopSerializer(shop, data={"business_document": request.data.get("business_document")}, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(owner=request.user)
+        serializer = self._update_model_with_serializer(
+            shop,
+            ShopSerializer,
+            {"business_document": request.data.get("business_document")},
+            save_kwargs={"owner": request.user},
+        )
         return Response(serializer.data)
 
 
-class ShopPlanSetupAPIView(APIView):
+class ShopPlanSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
@@ -348,37 +381,39 @@ class ShopPlanSetupAPIView(APIView):
                 fail_silently=True,
             )
 
-        request.user.role = "shop"
-        request.user.save(update_fields=["role"])
+        self._update_user_role(request.user, "shop")
         return Response({"detail": "Shop onboarding complete", "shop_id": shop.id})
 
 
-class DispatcherPersonalSetupAPIView(APIView):
+class DispatcherPersonalSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         profile, _ = DispatcherProfile.objects.get_or_create(user=request.user)
-        serializer = DispatcherProfileSerializer(profile, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
+        serializer = self._update_model_with_serializer(
+            profile,
+            DispatcherProfileSerializer,
+            request.data,
+            save_kwargs={"user": request.user},
+        )
         return Response(serializer.data)
 
 
-class DispatcherVehicleSetupAPIView(APIView):
+class DispatcherVehicleSetupAPIView(AccountAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request):
         profile, _ = DispatcherProfile.objects.get_or_create(user=request.user)
         fields = {k: v for k, v in request.data.items() if k in {"vehicle_type", "plate_number"}}
-        serializer = DispatcherProfileSerializer(profile, data=fields, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
-        request.user.role = "dispatcher"
-        request.user.save(update_fields=["role"])
+        serializer = self._update_model_with_serializer(
+            profile,
+            DispatcherProfileSerializer,
+            fields,
+            save_kwargs={"user": request.user},
+        )
+        self._update_user_role(request.user, "dispatcher")
         return Response(serializer.data)
 
 

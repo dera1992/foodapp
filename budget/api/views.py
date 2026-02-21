@@ -33,12 +33,18 @@ class BudgetViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(user=self.request.user)
 
+    def _get_budget_item(self, budget, item_id):
+        return get_object_or_404(ShoppingListItem, id=item_id, budget=budget)
+
+    def _request_quantity(self, request, default=1):
+        return int(request.data.get("quantity", default))
+
     @action(detail=True, methods=["post"], url_path="add-item")
     def add_item(self, request, pk=None):
         budget = self.get_object()
         product_id = request.data.get("product")
         name = request.data.get("name", "")
-        quantity = int(request.data.get("quantity", 1))
+        quantity = self._request_quantity(request)
         product = Products.objects.filter(id=product_id).first() if product_id else None
         item, created = ShoppingListItem.objects.get_or_create(
             budget=budget,
@@ -54,15 +60,15 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="remove-item")
     def remove_item(self, request, pk=None):
         budget = self.get_object()
-        item = get_object_or_404(ShoppingListItem, id=request.data.get("item_id"), budget=budget)
+        item = self._get_budget_item(budget, request.data.get("item_id"))
         item.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="update-item-quantity")
     def update_item_quantity(self, request, pk=None):
         budget = self.get_object()
-        item = get_object_or_404(ShoppingListItem, id=request.data.get("item_id"), budget=budget)
-        quantity = int(request.data.get("quantity", 1))
+        item = self._get_budget_item(budget, request.data.get("item_id"))
+        quantity = self._request_quantity(request)
         item.quantity = max(1, quantity)
         item.save(update_fields=["quantity"])
         return Response(ShoppingListItemSerializer(item).data)
@@ -113,6 +119,9 @@ class BudgetTemplateViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(user=self.request.user)
 
+    def _request_quantity(self, request, default=1):
+        return int(request.data.get("quantity", default))
+
     @action(detail=True, methods=["post"], url_path="apply")
     def apply(self, request, pk=None):
         template = self.get_object()
@@ -133,7 +142,7 @@ class BudgetTemplateViewSet(viewsets.ModelViewSet):
     def add_item(self, request, pk=None):
         template = self.get_object()
         product = get_object_or_404(Products, id=request.data.get("product_id"))
-        quantity = int(request.data.get("quantity", 1))
+        quantity = self._request_quantity(request)
         item, created = BudgetTemplateItem.objects.get_or_create(
             template=template,
             product=product,

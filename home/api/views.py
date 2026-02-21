@@ -31,6 +31,20 @@ class APIPayloadSerializer(serializers.Serializer):
     pass
 
 
+class HomeAPIView(APIView):
+    serializer_class = APIPayloadSerializer
+
+    def _get_product(self, product_id):
+        return get_object_or_404(Products, id=product_id)
+
+
+class AuthenticatedHomeAPIView(HomeAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class PublicHomeAPIView(HomeAPIView):
+    permission_classes = [permissions.AllowAny]
+
 
 class WishlistItemViewSet(viewsets.ModelViewSet):
     queryset = WishlistItem.objects.select_related("user", "product")
@@ -44,9 +58,7 @@ class WishlistNotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
 
 
-class DashboardAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class DashboardAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -60,9 +72,7 @@ class DashboardAPIView(APIView):
         )
 
 
-class CustomerAnalyticsAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class CustomerAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -82,9 +92,7 @@ class CustomerAnalyticsAPIView(APIView):
         )
 
 
-class DispatcherAnalyticsAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class DispatcherAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -100,9 +108,7 @@ class DispatcherAnalyticsAPIView(APIView):
         )
 
 
-class ShopAnalyticsAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class ShopAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -115,9 +121,7 @@ class ShopAnalyticsAPIView(APIView):
         return Response(payload)
 
 
-class ShopAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class ShopAPIView(PublicHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -125,9 +129,7 @@ class ShopAPIView(APIView):
         return Response(ShopSerializer(shops, many=True).data)
 
 
-class ShopDetailAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class ShopDetailAPIView(PublicHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, shop_id):
@@ -136,26 +138,22 @@ class ShopDetailAPIView(APIView):
         return Response({"shop": ShopSerializer(shop).data, "products": ProductsSerializer(products, many=True).data})
 
 
-class FavouriteAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class FavouriteAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, product_id):
-        product = get_object_or_404(Products, id=product_id)
+        product = self._get_product(product_id)
         product.favourite.add(request.user)
         return Response({"detail": "added to favourites"}, status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=APIPayloadSerializer)
     def delete(self, request, product_id):
-        product = get_object_or_404(Products, id=product_id)
+        product = self._get_product(product_id)
         product.favourite.remove(request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class FavouritesListAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class FavouritesListAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -163,13 +161,11 @@ class FavouritesListAPIView(APIView):
         return Response(ProductsSerializer(products, many=True).data)
 
 
-class SubmitReviewAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class SubmitReviewAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, post_id):
-        product = get_object_or_404(Products, id=post_id)
+        product = self._get_product(post_id)
         profile = getattr(request.user, "profile", None)
         if not profile:
             return Response({"detail": "Profile required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -189,9 +185,7 @@ class SubmitReviewAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class CategoryCountAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class CategoryCountAPIView(PublicHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -199,9 +193,7 @@ class CategoryCountAPIView(APIView):
         return Response(list(counts))
 
 
-class NearbyShopsAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = APIPayloadSerializer
+class NearbyShopsAPIView(PublicHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
@@ -225,9 +217,7 @@ class NearbyShopsAPIView(APIView):
         return Response(ShopSerializer(shops, many=True).data)
 
 
-class ToggleShopSubscriptionAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class ToggleShopSubscriptionAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def post(self, request, shop_id):
@@ -239,9 +229,7 @@ class ToggleShopSubscriptionAPIView(APIView):
         return Response({"detail": "Unsubscribed", "subscribed": False})
 
 
-class ShopNotificationsAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = APIPayloadSerializer
+class ShopNotificationsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):

@@ -1,5 +1,4 @@
 from django.http import Http404
-from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -16,34 +15,31 @@ from foodCreate.serializers import (
 from .permissions import IsOwnerOrReadOnly
 
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class ReadPublicWriteOwnerViewSet(viewsets.ModelViewSet):
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
+
+
+class CategoryViewSet(ReadPublicWriteOwnerViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
-    def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
 
-
-class SubCategoryViewSet(viewsets.ModelViewSet):
+class SubCategoryViewSet(ReadPublicWriteOwnerViewSet):
     queryset = SubCategory.objects.all()
     serializer_class = SubCategorySerializer
 
-    def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
 
-
-class ProductsViewSet(viewsets.ModelViewSet):
+class ProductsViewSet(ReadPublicWriteOwnerViewSet):
     queryset = Products.objects.select_related("shop", "category", "subcategory").all()
     serializer_class = ProductsSerializer
 
     def get_permissions(self):
-        if self.action in ["list", "retrieve", "lookup_product"]:
+        if self.action in ["lookup_product", "load_subcategories"]:
             return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
+        return super().get_permissions()
 
     @action(detail=False, methods=["get"], url_path="load-subcategories")
     def load_subcategories(self, request):
