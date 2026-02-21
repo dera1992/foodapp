@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 
 import os
+import importlib.util
 from ctypes.util import find_library
 
 import environ
@@ -79,6 +80,13 @@ INSTALLED_APPS = [
      'ckeditor',
     # 'ckeditor_uploader',
 ]
+
+if HAS_DJANGO_FILTERS:
+    INSTALLED_APPS.append('django_filters')
+if HAS_DRF_SPECTACULAR:
+    INSTALLED_APPS.append('drf_spectacular')
+if HAS_SIMPLEJWT:
+    INSTALLED_APPS.append('rest_framework_simplejwt.token_blacklist')
 
 if GIS_ENABLED:
     INSTALLED_APPS.append('django.contrib.gis')
