@@ -35,7 +35,7 @@ class EnsureRoleMiddleware:
                             and not path.startswith('/static')
                             and not path.startswith('/media')
                         ):
-                            return redirect('account:shop_info')
+                            return redirect('shop_info')
                 if request.user.role == 'dispatcher':
                     profile = DispatcherProfile.objects.filter(user=request.user).first()
                     complete = bool(
@@ -53,5 +53,5 @@ class EnsureRoleMiddleware:
                             and not path.startswith('/static')
                             and not path.startswith('/media')
                         ):
-                            return redirect('account:dispatcher_personal')
+                            return redirect('dispatcher_personal')
         return self.get_response(request)
