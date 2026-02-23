@@ -23,7 +23,7 @@ const ROLES: RoleOption[] = [
       pillText: 'var(--green-dark)',
       checkBg: 'var(--green)'
     },
-    redirectTo: '/'
+    redirectTo: '/account/customer/setup/'
   },
   {
     id: 'shop',
