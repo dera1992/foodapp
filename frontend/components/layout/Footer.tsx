@@ -19,7 +19,7 @@ export function Footer() {
           <h4>Company</h4>
           <ul>
             <li><Link href="/about">About Us</Link></li>
-            <li><a href="#">How it works</a></li>
+            <li><Link href="/how-it-works">How it works</Link></li>
             <li><a href="#">Blog</a></li>
             <li><a href="#">Careers</a></li>
           </ul>

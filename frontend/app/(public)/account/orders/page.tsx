@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
 import { OrderStatusDashboardPage } from '@/components/orders/OrderStatusDashboardPage';
+import { Container } from '@/components/layout/Container';
 import { getSession } from '@/lib/auth/session';
 import { getAdminOrders } from '@/lib/api/endpoints';
 import { normalizeOrderStatusRows } from '@/lib/orders/normalizeOrderStatusRows';
 
-export default async function AdminOrdersPage() {
+export default async function AccountOrdersPage() {
   const session = await getSession();
 
   if (!session.isAuthenticated) {
@@ -12,8 +13,13 @@ export default async function AdminOrdersPage() {
   }
 
   const payload = await getAdminOrders().catch(() => ({ data: [] as unknown[] }));
-  const scope = session.role === 'admin' ? 'admin' : session.role === 'shop' ? 'shop' : 'customer';
-  const orders = normalizeOrderStatusRows(payload.data as unknown[], session, scope);
+  const orders = normalizeOrderStatusRows(payload.data as unknown[], session, 'customer');
 
-  return <OrderStatusDashboardPage orders={orders} scope={scope} />;
+  return (
+    <div className="bf-analytics-page-wrap py-10">
+      <Container>
+        <OrderStatusDashboardPage orders={orders} scope="customer" />
+      </Container>
+    </div>
+  );
 }

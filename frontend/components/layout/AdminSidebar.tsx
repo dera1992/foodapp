@@ -4,19 +4,27 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 
-const links = [
+type NavLink = {
+  href: string;
+  label: string;
+  icon: string;
+  external?: boolean;
+};
+
+const links: NavLink[] = [
   { href: '/admin', label: 'Dashboard', icon: '📊' },
   { href: '/admin/analytics', label: 'Shop Analytics', icon: '📈' },
-  { href: '/admin', label: 'Admin', icon: '⚙️' },
+  { href: '__DJANGO_ADMIN__', label: 'Admin', icon: '⚙️', external: true },
   { href: '/admin/orders', label: 'Order Status', icon: '📋' },
-  { href: '/admin/orders', label: 'My Orders', icon: '🛍️' },
   { href: '/admin/products', label: 'Product List', icon: '📦' },
   { href: '/admin/products/new', label: 'Add Product', icon: '➕' },
-  { href: '/admin/customers', label: 'View Customers', icon: '👥' }
+  { href: '/admin/customers', label: 'View Customers', icon: '👥' },
+  { href: '/admin/settings', label: 'Settings', icon: '⚙️' }
 ];
 
 export function AdminSidebar({ open = false }: { open?: boolean }) {
   const pathname = usePathname();
+  const djangoAdminHref = `${(process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api').replace(/\/api\/?$/, '')}/admin/`;
 
   return (
     <aside className={cn('bf-admin-sidebar', open && 'open')}>
@@ -29,9 +37,16 @@ export function AdminSidebar({ open = false }: { open?: boolean }) {
       <nav className="flex-1 space-y-1 p-3">
         <p className="bf-admin-nav-label">Navigation</p>
         {links.map((link) => {
-          const isActive = pathname === link.href;
+          const href = link.href === '__DJANGO_ADMIN__' ? djangoAdminHref : link.href;
+          const isActive = !link.external && pathname === href;
+
           return (
-            <Link key={`${link.href}-${link.label}`} href={link.href} className={cn('bf-admin-nav-item', isActive && 'active')}>
+            <Link
+              key={`${link.href}-${link.label}`}
+              href={href}
+              className={cn('bf-admin-nav-item', isActive && 'active')}
+              {...(link.external ? { target: '_blank', rel: 'noreferrer' } : {})}
+            >
               <span aria-hidden="true">{link.icon}</span>
               <span>{link.label}</span>
             </Link>
@@ -48,3 +63,4 @@ export function AdminSidebar({ open = false }: { open?: boolean }) {
     </aside>
   );
 }
+

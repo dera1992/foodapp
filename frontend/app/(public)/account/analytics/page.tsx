@@ -72,7 +72,7 @@ export default async function CustomerAnalyticsPage() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">
-          <TableCard title="Top Categories" actionLabel="View all ->" actionHref="/shops">
+          <TableCard title="Top Categories" actionLabel="View all ->" actionHref="/shops" className="bg-white">
             {analytics?.topCategories.length ? (
               <div className="space-y-1">
                 {analytics.topCategories.map((row) => (
@@ -90,7 +90,7 @@ export default async function CustomerAnalyticsPage() {
             )}
           </TableCard>
 
-          <TableCard title="Favourite Shops" actionLabel="View all ->" actionHref="/shops">
+          <TableCard title="Favourite Shops" actionLabel="View all ->" actionHref="/shops" className="bg-white">
             {analytics?.favouriteShops.length ? (
               <div className="space-y-1">
                 {analytics.favouriteShops.map((row) => (
@@ -111,7 +111,7 @@ export default async function CustomerAnalyticsPage() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">
-          <TableCard title="Subscribed Shops" actionLabel="Manage ->" actionHref="/shops">
+          <TableCard title="Subscribed Shops" actionLabel="Manage ->" actionHref="/shops" className="bg-white">
             {analytics?.subscribedShops.length ? (
               <div className="space-y-1">
                 {analytics.subscribedShops.map((row) => (
@@ -133,7 +133,7 @@ export default async function CustomerAnalyticsPage() {
             )}
           </TableCard>
 
-          <TableCard title="Recent Orders" actionLabel="View all ->" actionHref="/cart">
+          <TableCard title="Recent Orders" actionLabel="View all ->" actionHref="/account/orders" className="bg-white">
             {analytics?.recentOrders.length ? (
               <div className="space-y-1">
                 {analytics.recentOrders.map((row) => (
