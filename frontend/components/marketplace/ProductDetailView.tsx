@@ -1,230 +1,525 @@
 'use client';
 
-import Image from 'next/image';
-import Link from 'next/link';
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import { ArrowRight, Bell, Building2, Clock3, Copy, Facebook, Heart, MessageCircle, ShoppingCart, Star } from 'lucide-react';
+import Link from 'next/link';
 import type { Product } from '@/types/api';
-import { addToCart } from '@/lib/api/endpoints';
-import { formatCurrency } from '@/lib/utils/money';
-import { formatDate } from '@/lib/utils/format';
-import { Button } from '@/components/ui/Button';
-import { QuantityControl } from '@/components/marketplace/QuantityControl';
-import { ProductTabs } from '@/components/marketplace/ProductTabs';
-import { ProductCard } from '@/components/marketplace/ProductCard';
+import { addToCart, addWishlist } from '@/lib/api/endpoints';
 
-type ProductDetailViewProps = {
-  product: Product;
-  related: Product[];
-};
+type Props = { product: Product; related: Product[] };
+type Tab = 'description' | 'nutrition' | 'reviews';
 
-export function ProductDetailView({ product, related }: ProductDetailViewProps) {
-  const [selectedImage, setSelectedImage] = useState(product.image || '/placeholder-product.svg');
-  const [qty, setQty] = useState(1);
-  const [wishlisted, setWishlisted] = useState(false);
-  const [isPending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<string | null>(null);
-  const [isShareSupported, setIsShareSupported] = useState(false);
+// ---- Inline SVG icons ----
+function IconCart() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+    </svg>
+  );
+}
+function IconHeart({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>
+  );
+}
+function IconBell() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  );
+}
+function IconClock() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </svg>
+  );
+}
+function IconShare() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+    </svg>
+  );
+}
+function IconCopy() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  );
+}
+function IconStore() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  );
+}
+function IconTruck() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+      <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+    </svg>
+  );
+}
+function IconStar({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? '#f5a623' : 'none'} stroke="#f5a623" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </svg>
+  );
+}
+function IconPlus() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+}
+function IconMinus() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+}
+function IconArrowRight() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>;
+}
 
+// ---- Helpers ----
+function formatPrice(value: number) {
+  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+type ExpiryUrgency = 'expired' | 'today' | 'soon' | 'week' | 'normal';
+function getExpiryInfo(expiresOn: string | null | undefined): { label: string; urgency: ExpiryUrgency } | null {
+  if (!expiresOn) return null;
+  const now = new Date();
+  const exp = new Date(expiresOn);
+  const diffMs = exp.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { label: 'This product has expired', urgency: 'expired' };
+  if (diffDays === 0) return { label: 'Expires today — pick up fast!', urgency: 'today' };
+  if (diffDays <= 2) return { label: `Expires in ${diffDays} day${diffDays === 1 ? '' : 's'} — act quickly!`, urgency: 'soon' };
+  if (diffDays <= 7) return { label: `Expires in ${diffDays} days`, urgency: 'week' };
+  const fmt = exp.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return { label: `Best before ${fmt}`, urgency: 'normal' };
+}
+
+function useCountdown(expiresOn: string | null | undefined) {
+  const [timeLeft, setTimeLeft] = useState('');
   useEffect(() => {
-    setIsShareSupported(typeof navigator !== 'undefined' && typeof navigator.share === 'function');
-  }, []);
+    if (!expiresOn) return;
+    const tick = () => {
+      const diff = new Date(expiresOn).getTime() - Date.now();
+      if (diff <= 0) { setTimeLeft('Expired'); return; }
+      const h = Math.floor(diff / 3_600_000);
+      const m = Math.floor((diff % 3_600_000) / 60_000);
+      const s = Math.floor((diff % 60_000) / 1000);
+      if (h >= 24) { setTimeLeft(`${Math.floor(h / 24)}d ${h % 24}h left`); return; }
+      setTimeLeft(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresOn]);
+  return timeLeft;
+}
 
-  const gallery = useMemo(() => {
-    const images = [product.image, ...(product.gallery || [])].filter(Boolean) as string[];
-    return images.length ? Array.from(new Set(images)) : ['/placeholder-product.svg'];
-  }, [product.gallery, product.image]);
+// ---- Gallery ----
+function ProductGallery({ images, name, expiresOn, discountPercent }: {
+  images: string[];
+  name: string;
+  expiresOn?: string | null;
+  discountPercent?: number | null;
+}) {
+  const [selected, setSelected] = useState(0);
+  const countdown = useCountdown(expiresOn);
+  const expInfo = getExpiryInfo(expiresOn);
+  const isUrgent = expInfo && (expInfo.urgency === 'today' || expInfo.urgency === 'soon');
 
-  const discount = product.oldPrice && product.oldPrice > product.price ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) : null;
-  const reviewCount = product.reviewCount || 0;
-  const filledStars = Math.max(0, Math.min(5, Math.round(product.rating ?? 0)));
-  const categories = product.categories?.length ? product.categories : product.category ? [product.category] : [];
+  return (
+    <div className="pd-gallery">
+      <div className="pd-gallery-main">
+        {discountPercent ? <div className="pd-gallery-discount">{discountPercent}% OFF</div> : null}
+        {countdown ? (
+          <div className={`pd-gallery-countdown${isUrgent ? ' urgent' : ''}`}>
+            <IconClock /><span>{countdown}</span>
+          </div>
+        ) : null}
+        {images[selected]
+          ? <img src={images[selected]} alt={name} className="pd-gallery-img" />
+          : <div className="pd-gallery-placeholder">🍃</div>
+        }
+      </div>
+      {images.length > 1 && (
+        <div className="pd-thumb-row">
+          {images.map((img, i) => (
+            <button key={i} type="button" className={`pd-thumb${selected === i ? ' active' : ''}`} onClick={() => setSelected(i)}>
+              <img src={img} alt={`${name} view ${i + 1}`} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const onAddToCart = () => {
-    setNotice(null);
-    startTransition(async () => {
-      try {
-        await addToCart(product.id, qty);
-        setNotice('Added to cart.');
-      } catch {
-        setNotice('Could not add to cart right now.');
-      }
+// ---- Quantity stepper ----
+function QuantityStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="pd-qty-row">
+      <button type="button" className="pd-qty-btn" onClick={() => onChange(Math.max(1, value - 1))}><IconMinus /></button>
+      <span className="pd-qty-val">{value}</span>
+      <button type="button" className="pd-qty-btn" onClick={() => onChange(value + 1)}><IconPlus /></button>
+    </div>
+  );
+}
+
+// ---- Reviews tab ----
+type ReviewData = { id: string; author: string; rating: number; body: string; createdAt: string };
+
+function ReviewsTab({ reviewCount }: { reviewCount?: number | null }) {
+  const reviews: ReviewData[] = [];
+  const [form, setForm] = useState({ rating: 5, body: '' });
+  const [submitted, setSubmitted] = useState(false);
+  const [isPending, start] = useTransition();
+
+  const totalRatings = reviews.length;
+  const avgRating = totalRatings ? reviews.reduce((s, r) => s + r.rating, 0) / totalRatings : 0;
+  const ratingCounts = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0];
+    for (const r of reviews) if (r.rating >= 1 && r.rating <= 5) counts[r.rating - 1]++;
+    return counts.reverse();
+  }, [reviews]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.body.trim()) return;
+    start(async () => {
+      setSubmitted(true);
     });
   };
 
   return (
-    <>
-      <section className="bf-product-main-card">
-        <div className="bf-product-main-grid">
-          <div>
-            <div className="bf-product-image-frame">
-              <div className="bf-product-image-badges">
-                {product.status && product.status.toLowerCase() === 'draft' ? <span className="bf-status-badge is-draft">Draft</span> : null}
-                {product.delivery ? <span className="bf-status-badge is-delivery">{product.delivery}</span> : null}
+    <div className="pd-reviews">
+      <div className="pd-review-summary">
+        <div className="pd-review-score">
+          <div className="pd-review-big">{avgRating > 0 ? avgRating.toFixed(1) : '—'}</div>
+          <div className="pd-stars-row">
+            {[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= Math.round(avgRating)} />)}
+          </div>
+          <div className="pd-review-count">{reviewCount ?? totalRatings} review{(reviewCount ?? totalRatings) !== 1 ? 's' : ''}</div>
+        </div>
+        <div className="pd-review-bars">
+          {[5, 4, 3, 2, 1].map((star, i) => {
+            const count = ratingCounts[i] || 0;
+            const pct = totalRatings ? Math.round((count / totalRatings) * 100) : 0;
+            return (
+              <div key={star} className="pd-bar-row">
+                <span className="pd-bar-label">{star}★</span>
+                <div className="pd-bar-track"><div className="pd-bar-fill" style={{ width: `${pct}%` }} /></div>
+                <span className="pd-bar-count">{count}</span>
               </div>
-              <Image src={selectedImage} alt={product.name} fill className="object-cover" />
-            </div>
-            <div className="bf-thumb-row">
-              {gallery.map((image) => (
-                <button
-                  key={image}
-                  type="button"
-                  onClick={() => setSelectedImage(image)}
-                  className={`bf-thumb-btn ${selectedImage === image ? 'is-active' : ''}`}
-                  aria-label="Select product image"
-                >
-                  <Image src={image} alt={product.name} width={72} height={72} className="h-full w-full object-cover" />
-                </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="pd-write-review">
+        <div className="pd-wr-title">Write a Review</div>
+        {submitted ? (
+          <div className="pd-wr-thanks">Thank you! Your review will be visible after moderation.</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="pd-wr-form">
+            <div className="pd-wr-stars">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} type="button" className={`pd-wr-star${form.rating >= n ? ' lit' : ''}`} onClick={() => setForm((f) => ({ ...f, rating: n }))}>★</button>
               ))}
             </div>
-          </div>
-          <div>
-            <h1 className="bf-product-title">{product.name}</h1>
-            <div className="bf-rating-row">
-              <div className="flex items-center gap-1 text-amber-400">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <Star key={`rating-${index}`} className={`h-4 w-4 ${index < filledStars ? 'fill-current' : ''}`} />
-                ))}
-              </div>
-              <span>({reviewCount})</span>
-            </div>
-            <div className="bf-price-row">
-              <span className="bf-price-new">{formatCurrency(product.price)}</span>
-              {product.oldPrice ? <span className="bf-price-old">{formatCurrency(product.oldPrice)}</span> : null}
-              {discount ? <span className="bf-discount-badge">{discount}% OFF</span> : null}
-            </div>
-            <p className="bf-short-desc">{product.shortDescription || product.description || 'Fresh deal from a verified local shop.'}</p>
-            {product.expiresOn ? (
-              <p className="bf-expiry-callout">
-                <Clock3 className="inline h-4 w-4" /> Best before: <strong>{formatDate(product.expiresOn)}</strong> - Pick up today for maximum freshness.
-              </p>
-            ) : null}
-            <div className="bf-cta-row">
-              <QuantityControl value={qty} onChange={setQty} />
-              <Button className="flex-1" onClick={onAddToCart} disabled={isPending}>
-                <ShoppingCart className="mr-1 h-4 w-4" />
-                {isPending ? 'Adding...' : 'Add to Cart'}
-              </Button>
-            </div>
-            <button type="button" className={`bf-wishlist-btn ${wishlisted ? 'wishlisted' : ''}`} onClick={() => setWishlisted((prev) => !prev)}>
-              <Heart className="h-4 w-4" />
-              Add to Wishlist
+            <textarea
+              className="pd-wr-textarea"
+              placeholder="Share your thoughts about this product…"
+              value={form.body}
+              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+              rows={4}
+            />
+            <button type="submit" className="pd-wr-submit" disabled={isPending || !form.body.trim()}>
+              {isPending ? 'Submitting…' : 'Submit Review'}
             </button>
-            <hr className="bf-product-divider" />
-            <button type="button" className="bf-subscribe-btn" disabled={!product.shopId}>
-              <Bell className="h-4 w-4" />
-              Subscribe to Store
-            </button>
-            {!product.shopId ? <p className="mt-2 text-xs text-brand-muted">Store subscription is unavailable for this product.</p> : null}
-            {notice ? <p className="mt-3 text-sm text-brand-muted">{notice}</p> : null}
-            {categories.length ? (
-              <>
-                <hr className="bf-product-divider" />
-                <div className="bf-meta-row">
-                  <span className="bf-meta-label">Categories:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map((category) => (
-                      <span key={category} className="bf-category-pill">
-                        {category}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : null}
-            <hr className="bf-product-divider" />
-            <div className="bf-meta-row">
-              <span className="bf-meta-label">Share this product</span>
-              <div className="bf-share-row">
-                <button type="button" aria-label="Share on Facebook" className="bf-share-btn is-facebook" disabled title="Social sharing coming soon">
-                  <Facebook className="h-4 w-4" />
-                </button>
-                <button type="button" aria-label="Share on WhatsApp" className="bf-share-btn is-whatsapp" disabled title="Social sharing coming soon">
-                  <MessageCircle className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Copy product link"
-                  className="bf-share-btn is-copy"
-                  onClick={() => {
-                    if (typeof window === 'undefined') return;
-                    navigator.clipboard?.writeText(window.location.href);
-                    setNotice('Product link copied.');
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Share product"
-                  className="bf-share-btn is-twitter"
-                  onClick={() => {
-                    if (!isShareSupported || typeof window === 'undefined') return;
-                    navigator.share?.({ title: product.name, text: product.shortDescription || product.name, url: window.location.href });
-                  }}
-                  disabled={!isShareSupported}
-                  title={isShareSupported ? 'Share product' : 'Native share not supported'}
-                >
-                  x
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <ProductTabs description={product.description} />
-
-      <section className="bf-product-related">
-        <div className="bf-related-head">
-          <h2>
-            Related <span>Products</span>
-          </h2>
-          <Link href="/shops">See all</Link>
-        </div>
-        {related.length ? (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            {related.map((item) => (
-              <ProductCard key={item.id} product={item} />
-            ))}
-          </div>
-        ) : (
-          <div className="bf-related-empty">
-            <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-primaryLight text-brand-primaryDark">
-              <ShoppingCart className="h-8 w-8" />
-            </div>
-            <h3>No related products found</h3>
-            <p>Browse all available fresh deals.</p>
-            <Link href="/shops" className="bf-related-empty-link">
-              Browse all products <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+          </form>
         )}
-      </section>
+      </div>
 
-      <section className="partners-wrap !mb-16 !mt-12">
-        <div className="partners-header">
-          <div>
-            <h2>
-              Our Affiliate <span>Partners</span>
-            </h2>
-            <p>Brands and organisations we work with.</p>
-          </div>
-          <a href="#" className="partners-btn inline-flex items-center gap-2">
-            Become a partner <ArrowRight className="h-4 w-4" />
-          </a>
-        </div>
-        <div className="partners-grid">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={`partner-${index}`} className="partner-card">
-              <div className="partner-icon">
-                <Building2 className="h-5 w-5" />
+      {reviews.length > 0 ? (
+        <div className="pd-reviews-list">
+          {reviews.map((r) => (
+            <div key={r.id} className="pd-review-card">
+              <div className="pd-rc-header">
+                <div className="pd-rc-avatar">{r.author[0].toUpperCase()}</div>
+                <div className="pd-rc-meta">
+                  <div className="pd-rc-author">{r.author}</div>
+                  <div className="pd-stars-row">{[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= r.rating} />)}</div>
+                </div>
+                <div className="pd-rc-date">{new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
               </div>
-              <p>Partner Name</p>
+              <p className="pd-rc-body">{r.body}</p>
             </div>
           ))}
         </div>
-      </section>
-    </>
+      ) : (
+        <div className="pd-reviews-empty">No reviews yet. Be the first to review this product!</div>
+      )}
+    </div>
+  );
+}
+
+// ---- Related product card ----
+function RelatedCard({ product, index }: { product: Product; index: number }) {
+  const expInfo = getExpiryInfo(product.expiresOn);
+  const discount = product.discountPercent ?? (product.oldPrice && product.oldPrice > product.price
+    ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
+    : null);
+
+  return (
+    <Link href={`/products/${product.id}`} className="pd-related-card" style={{ animationDelay: `${index * 0.07}s` }}>
+      <div className="pd-rc2-img">
+        {product.image ? <img src={product.image} alt={product.name} /> : <span className="pd-rc2-emoji">🍃</span>}
+        {discount ? <div className="pd-rc2-badge">{discount}% OFF</div> : null}
+      </div>
+      <div className="pd-rc2-body">
+        {product.shopName && <div className="pd-rc2-shop">{product.shopName}</div>}
+        <div className="pd-rc2-name">{product.name}</div>
+        {expInfo && expInfo.urgency !== 'normal' && (
+          <div className={`pd-rc2-expiry ${expInfo.urgency}`}><IconClock /> {expInfo.label}</div>
+        )}
+        <div className="pd-rc2-price">
+          <span className="pd-rc2-new">{formatPrice(product.price)}</span>
+          {product.oldPrice && <span className="pd-rc2-old">{formatPrice(product.oldPrice)}</span>}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ---- Main export ----
+export function ProductDetailView({ product, related }: Props) {
+  const [qty, setQty] = useState(1);
+  const [wishlisted, setWishlisted] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('description');
+  const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [isPending, start] = useTransition();
+
+  const gallery = useMemo(() => {
+    const imgs = [product.image, ...(product.gallery || [])].filter(Boolean) as string[];
+    return Array.from(new Set(imgs));
+  }, [product.image, product.gallery]);
+
+  const discount = product.discountPercent ?? (product.oldPrice && product.oldPrice > product.price
+    ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
+    : null);
+
+  const expInfo = getExpiryInfo(product.expiresOn);
+  const categories = product.categories?.length ? product.categories : product.category ? [product.category] : [];
+  const filledStars = Math.round(Math.max(0, Math.min(5, product.rating ?? 0)));
+
+  const onAddToCart = () => {
+    setNotice(null);
+    start(async () => {
+      try {
+        await addToCart(product.id, qty);
+        setNotice({ msg: `${qty} × ${product.name} added to cart.`, ok: true });
+      } catch {
+        setNotice({ msg: 'Could not add to cart. Please try again.', ok: false });
+      }
+    });
+  };
+
+  const onWishlist = () => {
+    const next = !wishlisted;
+    setWishlisted(next);
+    if (next) {
+      addWishlist(product.id).catch(() => setWishlisted(false));
+      setNotice({ msg: 'Added to wishlist!', ok: true });
+    }
+  };
+
+  const onCopyLink = () => {
+    if (typeof window === 'undefined') return;
+    navigator.clipboard?.writeText(window.location.href);
+    setNotice({ msg: 'Link copied to clipboard!', ok: true });
+  };
+
+  return (
+    <div className="pd-page">
+      {/* ---- Main product card ---- */}
+      <div className="pd-card">
+        {/* Gallery */}
+        <ProductGallery
+          images={gallery}
+          name={product.name}
+          expiresOn={product.expiresOn}
+          discountPercent={discount}
+        />
+
+        {/* Info column */}
+        <div className="pd-info">
+          {product.shopName && (
+            <Link href={product.shopId ? `/shops/${product.shopId}` : '/shops'} className="pd-shop-link">
+              <IconStore /> {product.shopName}
+            </Link>
+          )}
+
+          <h1 className="pd-title">{product.name}</h1>
+
+          <div className="pd-rating-row">
+            <div className="pd-stars-row">
+              {[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= filledStars} />)}
+            </div>
+            {product.reviewCount != null && (
+              <button type="button" className="pd-review-lnk" onClick={() => setActiveTab('reviews')}>
+                ({product.reviewCount} review{product.reviewCount !== 1 ? 's' : ''})
+              </button>
+            )}
+          </div>
+
+          {expInfo && expInfo.urgency !== 'normal' && (
+            <div className={`pd-expiry-banner ${expInfo.urgency}`}>
+              <IconClock /> {expInfo.label}
+            </div>
+          )}
+
+          <div className="pd-price-block">
+            <span className="pd-price-new">{formatPrice(product.price)}</span>
+            {product.oldPrice ? <span className="pd-price-old">{formatPrice(product.oldPrice)}</span> : null}
+            {discount ? <span className="pd-save-badge">Save {discount}%</span> : null}
+          </div>
+          {discount && product.oldPrice ? (
+            <div className="pd-save-line">You save {formatPrice(product.oldPrice - product.price)}</div>
+          ) : null}
+
+          <p className="pd-short-desc">
+            {product.shortDescription || product.description || 'Fresh deal from a verified local shop.'}
+          </p>
+
+          <div className="pd-action-row">
+            <QuantityStepper value={qty} onChange={setQty} />
+            <button type="button" className="pd-cart-btn" onClick={onAddToCart} disabled={isPending}>
+              <IconCart /> {isPending ? 'Adding…' : 'Add to Cart'}
+            </button>
+            <button type="button" className={`pd-wish-btn${wishlisted ? ' wishlisted' : ''}`} onClick={onWishlist} aria-label="Wishlist">
+              <IconHeart filled={wishlisted} />
+            </button>
+          </div>
+
+          {notice && <div className={`pd-notice${notice.ok ? ' ok' : ' err'}`}>{notice.msg}</div>}
+
+          <button type="button" className="pd-subscribe-btn" disabled={!product.shopId}>
+            <IconBell /> Subscribe to this Shop
+          </button>
+
+          <div className="pd-divider" />
+
+          {/* Meta grid */}
+          <div className="pd-meta-grid">
+            {categories.length > 0 && (
+              <div className="pd-meta-row">
+                <span className="pd-meta-lbl">Category</span>
+                <div className="pd-cat-pills">
+                  {categories.map((c) => <span key={c} className="pd-cat-pill">{c}</span>)}
+                </div>
+              </div>
+            )}
+            {product.delivery && (
+              <div className="pd-meta-row">
+                <span className="pd-meta-lbl"><IconTruck /> Delivery</span>
+                <span className="pd-meta-val">{product.delivery}</span>
+              </div>
+            )}
+            {product.shopName && (
+              <div className="pd-meta-row">
+                <span className="pd-meta-lbl"><IconStore /> Sold by</span>
+                <Link href={product.shopId ? `/shops/${product.shopId}` : '/shops'} className="pd-meta-link">
+                  {product.shopName} <IconArrowRight />
+                </Link>
+              </div>
+            )}
+            <div className="pd-meta-row">
+              <span className="pd-meta-lbl"><IconShare /> Share</span>
+              <div className="pd-share-row">
+                <button type="button" className="pd-share-btn" onClick={onCopyLink} title="Copy link">
+                  <IconCopy />
+                </button>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                  className="pd-share-btn whatsapp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Share on WhatsApp"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
+                  </svg>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ---- Tabs ---- */}
+      <div className="pd-tabs-wrap">
+        <div className="pd-tab-bar">
+          {(['description', 'nutrition', 'reviews'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`pd-tab-btn${activeTab === t ? ' active' : ''}`}
+              onClick={() => setActiveTab(t)}
+            >
+              {t === 'description' ? 'Description'
+                : t === 'nutrition' ? 'Nutrition Info'
+                : `Reviews${product.reviewCount ? ` (${product.reviewCount})` : ''}`}
+            </button>
+          ))}
+        </div>
+        <div className="pd-tab-panel">
+          {activeTab === 'description' && (
+            <div className="pd-desc-content">
+              {product.description
+                ? <p>{product.description}</p>
+                : <p className="pd-desc-empty">No description provided for this product.</p>}
+              {expInfo && expInfo.urgency !== 'normal' && (
+                <div className={`pd-desc-expiry ${expInfo.urgency}`}><IconClock /> {expInfo.label}</div>
+              )}
+            </div>
+          )}
+          {activeTab === 'nutrition' && (
+            <div className="pd-nutrition">
+              <p className="pd-nutrition-note">Nutritional information is provided by the seller. Always check packaging for accurate details.</p>
+              <div className="pd-nutrition-placeholder"><span>🥗</span><p>Nutrition details not yet available for this product.</p></div>
+            </div>
+          )}
+          {activeTab === 'reviews' && <ReviewsTab reviewCount={product.reviewCount} />}
+        </div>
+      </div>
+
+      {/* ---- Related products ---- */}
+      <div className="pd-related-wrap">
+        <div className="pd-related-head">
+          <h2 className="pd-related-title">Related <em>Products</em></h2>
+          <Link href="/products" className="pd-related-see-all">See all <IconArrowRight /></Link>
+        </div>
+        {related.length > 0 ? (
+          <div className="pd-related-grid">
+            {related.map((p, i) => <RelatedCard key={p.id} product={p} index={i} />)}
+          </div>
+        ) : (
+          <div className="pd-related-empty">
+            <span>🏪</span>
+            <p>No related products found. <Link href="/products">Browse all products →</Link></p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

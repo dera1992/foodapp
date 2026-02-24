@@ -1,27 +1,53 @@
 import { notFound } from 'next/navigation';
-import { Container } from '@/components/layout/Container';
-import { PageHero } from '@/components/layout/PageHero';
-import { ProductCard } from '@/components/marketplace/ProductCard';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { getProducts, getShop } from '@/lib/api/endpoints';
+import { Breadcrumb } from '@/components/ui/Breadcrumb';
+import { ShopDetailClient } from '@/components/shops/ShopDetailClient';
+import {
+  getShop,
+  getShopProducts,
+  getShopReviews,
+  getSimilarShops,
+} from '@/lib/api/endpoints';
+import { getSession } from '@/lib/auth/session';
 
-export default async function ShopDetailsPage({ params }: { params: Promise<{ shopId: string }> }) {
+export default async function ShopDetailsPage({
+  params,
+}: {
+  params: Promise<{ shopId: string }>;
+}) {
   const { shopId } = await params;
-  const shop = await getShop(shopId).catch(() => null);
+
+  const [shop, productsResult, reviews, similarShops, session] =
+    await Promise.all([
+      getShop(shopId).catch(() => null),
+      getShopProducts(shopId).catch(() => ({ data: [] })),
+      getShopReviews(shopId).catch(() => []),
+      getSimilarShops(shopId).catch(() => []),
+      getSession(),
+    ]);
+
   if (!shop) return notFound();
 
-  const products = await getProducts().then((r) => r.data.filter((p) => p.shopId === shopId)).catch(() => []);
+  const products = productsResult.data;
+  const isOwner = session.isAuthenticated && session.role === 'shop';
 
   return (
     <>
-      <PageHero title={shop.name} subtitle={`${shop.address || 'Address unavailable'}${shop.city ? `, ${shop.city}` : ''}`} />
-      <Container className="py-10">
-        {products.length ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{products.map((product) => <ProductCard key={product.id} product={product} />)}</div>
-        ) : (
-          <EmptyState title="No products yet" description="This shop has not published products right now." />
-        )}
-      </Container>
+      <div style={{ padding: '12px 20px', maxWidth: 1200, margin: '0 auto' }}>
+        <Breadcrumb
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Shops', href: '/shops' },
+            { label: shop.name },
+          ]}
+        />
+      </div>
+      <ShopDetailClient
+        shop={shop}
+        products={products}
+        reviews={reviews}
+        similarShops={similarShops}
+        isOwner={isOwner}
+      />
     </>
   );
 }

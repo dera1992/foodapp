@@ -7,13 +7,31 @@
 
 export type Shop = {
   id: string;
+  slug?: string;
   name: string;
   image?: string | null;
+  emoji?: string;
   address?: string;
   city?: string;
+  description?: string;
+  isOpen?: boolean;
   distanceKm?: number | null;
   rating?: number | null;
   productsCount?: number;
+  subscriberCount?: number;
+  memberSince?: string;
+  phone?: string;
+  email?: string;
+  openingHours?: string;
+  categories?: string[];
+};
+
+export type ShopReview = {
+  id: string;
+  author: string;
+  rating: number;
+  body: string;
+  createdAt: string;
 };
 
 export type Product = {

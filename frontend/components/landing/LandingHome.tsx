@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { Product, Shop } from '@/types/api';
+import { HowItWorksCard } from '@/components/landing/HowItWorksCard';
+import { FeatureStrip } from '@/components/landing/FeatureStrip';
 
 type Props = {
   shops: Shop[];
@@ -19,8 +21,17 @@ const categoryItems = [
   { label: 'Cooking Oil', icon: '🫒', bg: '#fef3c7' },
   { label: 'Honey', icon: '🍯', bg: '#fefce8' },
   { label: 'Eggs', icon: '🥚', bg: '#fef3c7' },
-  { label: 'Others', icon: '🧺', bg: '#f3f4f6' }
+  { label: 'Others', icon: '🧺', bg: '#f3f4f6' },
 ];
+
+const MINI_FALLBACK = [
+  { id: 'm1', name: 'Sourdough Loaf', price: 1.0, emoji: '🍞' },
+  { id: 'm2', name: 'Organic Milk', price: 0.9, emoji: '🥛' },
+  { id: 'm3', name: 'Cheddar 300g', price: 1.3, emoji: '🧀' },
+  { id: 'm4', name: 'Salad Mix', price: 0.6, emoji: '🥗' },
+];
+
+const MINI_EMOJIS = ['🍞', '🥛', '🧀', '🥗'];
 
 function asName(product: Product): string {
   return product.name || 'Fresh deal item';
@@ -70,6 +81,7 @@ export function LandingHome({ shops, products }: Props) {
 
   const featured = products[0];
   const productGrid = useMemo(() => (products.length ? products.slice(0, 4) : []), [products]);
+  const miniProducts = productGrid.slice(0, 4);
   const nearbyShop = shops[0];
 
   const onAdd = (id: string) => {
@@ -81,36 +93,74 @@ export function LandingHome({ shops, products }: Props) {
 
   return (
     <>
+      {/* ── HERO ─────────────────────────────────── */}
       <section className="hero">
         <div className="hero-noise" />
         <div className="hero-blobs" />
-        <div className="hero-content">
-          <div className="hero-tags">
-            <span className="hero-tag">🥦 Cut food waste</span>
-            <span className="hero-tag">🏪 Local shops</span>
-            <span className="hero-tag">🔥 Fresh deals</span>
+
+        <div className="hero-inner">
+
+          {/* LEFT COLUMN */}
+          <div className="hero-left">
+            <div className="hero-content">
+              <div className="hero-tags">
+                <span className="hero-tag">🥦 Cut food waste</span>
+                <span className="hero-tag">🏪 Local shops</span>
+                <span className="hero-tag">🔥 Fresh deals</span>
+              </div>
+              <h1>Save more on <br /><em>fresh food</em></h1>
+              <p className="hero-sub">Shop near-expiry deals</p>
+              <p>Discover trusted neighborhood shops, buy surplus food at unbeatable prices, and keep good food out of the bin.</p>
+              <div className="hero-pills">
+                <span className="hero-pill">✓ Save up to 90%</span>
+                <span className="hero-pill">✓ Pick up fast</span>
+                <span className="hero-pill">✓ Verified sellers</span>
+              </div>
+              <div className="hero-ctas">
+                <Link href="/shops" className="btn-primary">Browse Deals →</Link>
+                <button className="btn-secondary" type="button">Find nearby shops</button>
+              </div>
+            </div>
+
+            {/* Stats — inline below CTAs */}
+            <div className="hero-stats">
+              <div className="stat-card"><h3>2,400+</h3><p>Meals saved weekly</p></div>
+              <div className="stat-divider" />
+              <div className="stat-card"><h3>90%</h3><p>Max savings</p></div>
+              <div className="stat-divider" />
+              <div className="stat-card"><h3>140+</h3><p>Verified shops</p></div>
+            </div>
           </div>
-          <h1>Save more on <br /><em>fresh food</em></h1>
-          <p className="hero-sub">Shop near-expiry deals</p>
-          <p>Discover trusted neighborhood shops, buy surplus food at unbeatable prices, and keep good food out of the bin.</p>
-          <div className="hero-pills">
-            <span className="hero-pill">✓ Save up to 90%</span>
-            <span className="hero-pill">✓ Pick up fast</span>
-            <span className="hero-pill">✓ Verified sellers</span>
+
+          {/* RIGHT COLUMN */}
+          <div className="hero-right-col">
+            <HowItWorksCard />
+
+            {/* Mini product grid — live deal teaser */}
+            <div className="mini-grid">
+              {(miniProducts.length ? miniProducts : MINI_FALLBACK).map((p, i) => (
+                <Link
+                  key={p.id || i}
+                  href="/shops"
+                  className="mini-card"
+                >
+                  <div className="mini-emoji">{MINI_EMOJIS[i % 4]}</div>
+                  <div>
+                    <div className="mini-name">{p.name || MINI_FALLBACK[i]?.name}</div>
+                    <div className="mini-price">£{(p.price ?? 0).toFixed(2)}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-          <div className="hero-ctas">
-            <Link href="/shops" className="btn-primary">Browse Deals →</Link>
-            <button className="btn-secondary" type="button">Find nearby shops</button>
-          </div>
+
         </div>
-        <div className="hero-stats">
-          <div className="stat-card"><h3>2,400+</h3><p>Meals saved weekly</p></div>
-          <div className="stat-card"><h3>90%</h3><p>Max savings</p></div>
-          <div className="stat-card"><h3>140+</h3><p>Verified shops</p></div>
-        </div>
-        <div className="scroll-indicator">⌄</div>
       </section>
 
+      {/* ── FEATURE STRIP ────────────────────────── */}
+      <FeatureStrip />
+
+      {/* ── MARQUEE ──────────────────────────────── */}
       <div className="marquee-wrap">
         <div className="marquee-track">
           {['🥦 Fresh Vegetables', '🍎 Seasonal Fruits', '🥩 Quality Meats', '🐟 Fresh Seafood', '🌾 Wholegrains', '🧂 Spices & More', '🥦 Fresh Vegetables', '🍎 Seasonal Fruits', '🥩 Quality Meats', '🐟 Fresh Seafood', '🌾 Wholegrains', '🧂 Spices & More'].map((item, idx) => (
@@ -119,6 +169,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </div>
 
+      {/* ── SHOP BY CATEGORY ─────────────────────── */}
       <section className="section">
         <div className="section-header">
           <h2 className="section-title">Shop by <span>category</span></h2>
@@ -126,7 +177,12 @@ export function LandingHome({ shops, products }: Props) {
         </div>
         <div className="cat-grid">
           {categoryItems.map((cat) => (
-            <button key={cat.label} className={`cat-card ${activeCategory === cat.label ? 'active' : ''}`} onClick={() => setActiveCategory(cat.label)} type="button">
+            <button
+              key={cat.label}
+              className={`cat-card ${activeCategory === cat.label ? 'active' : ''}`}
+              onClick={() => setActiveCategory(cat.label)}
+              type="button"
+            >
               <div className="cat-icon" style={{ background: cat.bg }}>{cat.icon}</div>
               <p>{cat.label}</p>
             </button>
@@ -134,6 +190,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
+      {/* ── SHOP NEAR YOU ────────────────────────── */}
       <div className="location-section">
         <div className="location-left">
           <h2>Shop <span style={{ color: 'var(--green)' }}>near you</span></h2>
@@ -162,6 +219,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </div>
 
+      {/* ── WHY CHOOSE BUNCHFOOD ─────────────────── */}
       <section className="features-section">
         <div className="features-intro">
           <h2>Why choose bunchfood?</h2>
@@ -174,6 +232,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
+      {/* ── DEAL OF THE DAY ──────────────────────── */}
       <section className="deal-section">
         <div className="section-header">
           <div>
@@ -207,6 +266,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
+      {/* ── FRESH VEGETABLES ─────────────────────── */}
       <section className="section section-products">
         <div className="section-header">
           <h2 className="section-title">Fresh <span>Vegetables</span></h2>
@@ -217,17 +277,26 @@ export function LandingHome({ shops, products }: Props) {
             { id: 'a', name: 'Broccoli Crown', price: 0.4, oldPrice: 2, category: '500g · Organic' },
             { id: 'b', name: 'Carrots Bunch', price: 0.45, oldPrice: 1.5, category: '1kg · Fresh' },
             { id: 'c', name: 'Vine Tomatoes', price: 0.2, oldPrice: 2.2, category: '400g · Local' },
-            { id: 'd', name: 'Versatile Greens', price: 0.5, oldPrice: 2, category: '500g · Organic' }
+            { id: 'd', name: 'Versatile Greens', price: 0.5, oldPrice: 2, category: '500g · Organic' },
           ] as Product[]).map((product, idx) => (
             <div className="product-card" key={product.id || idx}>
-              <div className="product-img">{['🥦', '🥕', '🍅', '🥬'][idx % 4]}<span className="expiry-badge">Exp: {expiryDays(product)} days</span><span className="save-badge">Save {Math.max(savings(product), 70)}%</span></div>
+              <div className="product-img">
+                {['🥦', '🥕', '🍅', '🥬'][idx % 4]}
+                <span className="expiry-badge">Exp: {expiryDays(product)} days</span>
+                <span className="save-badge">Save {Math.max(savings(product), 70)}%</span>
+              </div>
               <div className="product-body">
                 <p className="product-store">{asShop(product)}</p>
                 <p className="product-name">{asName(product)}</p>
                 <p className="product-weight">{asWeight(product)}</p>
                 <div className="product-footer">
-                  <div className="prices"><span className="p-new">£{(product.price ?? 0).toFixed(2)}</span><span className="p-old">£{((product.oldPrice ?? product.price ?? 0) as number).toFixed(2)}</span></div>
-                  <button className="add-btn" onClick={() => onAdd(String(product.id || idx))} type="button">{added[String(product.id || idx)] ? '✓' : '+'}</button>
+                  <div className="prices">
+                    <span className="p-new">£{(product.price ?? 0).toFixed(2)}</span>
+                    <span className="p-old">£{((product.oldPrice ?? product.price ?? 0) as number).toFixed(2)}</span>
+                  </div>
+                  <button className="add-btn" onClick={() => onAdd(String(product.id || idx))} type="button">
+                    {added[String(product.id || idx)] ? '✓' : '+'}
+                  </button>
                 </div>
               </div>
             </div>

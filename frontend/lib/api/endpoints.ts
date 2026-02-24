@@ -12,6 +12,7 @@ import type {
   Product,
   Shop,
   ShopAnalyticsDashboard,
+  ShopReview,
   Thread
 } from '@/types/api';
 
@@ -87,15 +88,39 @@ function toShop(raw: unknown): Shop {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const id = String(record.id ?? record.shop_id ?? '');
   const name = pickString(record, ['shop_name', 'name', 'title']) ?? 'Local shop';
+  const cats = pickArray(record, ['categories'])
+    .map((c) => (typeof c === 'string' ? c : pickString(c as Record<string, unknown>, ['name']) ?? ''))
+    .filter(Boolean) as string[];
   return {
     id,
+    slug: pickString(record, ['slug']) ?? slugify(name),
     name,
     image: pickString(record, ['image', 'shop_image']) ?? null,
+    emoji: pickString(record, ['emoji']) ?? '🏪',
     address: pickString(record, ['address', 'location']),
     city: pickString(record, ['city']),
+    description: pickString(record, ['description', 'bio']),
+    isOpen: typeof record.is_open === 'boolean' ? record.is_open : typeof record.isOpen === 'boolean' ? record.isOpen : true,
     distanceKm: toNumber(record.distance ?? record.distance_km) || null,
     rating: toNumber(record.rating) || null,
-    productsCount: toNumber(record.products_count) || undefined
+    productsCount: toNumber(record.products_count ?? record.product_count) || undefined,
+    subscriberCount: toNumber(record.subscribers ?? record.subscriber_count ?? record.followers) || undefined,
+    memberSince: pickString(record, ['member_since', 'joined', 'created_at']),
+    phone: pickString(record, ['phone', 'phone_number']),
+    email: pickString(record, ['email']),
+    openingHours: pickString(record, ['opening_hours', 'hours']),
+    categories: cats.length ? cats : undefined,
+  };
+}
+
+function toReview(raw: unknown): ShopReview {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return {
+    id: String(r.id ?? ''),
+    author: pickString(r, ['author', 'user', 'username', 'name']) ?? 'Anonymous',
+    rating: toNumber(r.rating) || 5,
+    body: pickString(r, ['body', 'text', 'comment', 'review']) ?? '',
+    createdAt: pickString(r, ['created_at', 'date', 'createdAt']) ?? new Date().toISOString(),
   };
 }
 
@@ -634,4 +659,45 @@ export async function createProduct(payload: Partial<Product>) {
     method: 'POST',
     body: payload
   });
+}
+
+export async function getShopProducts(shopId: string) {
+  try {
+    const payload = await requestWithFallback<unknown>([
+      `/account/shops/${shopId}/products/`,
+      `/home/shops/${shopId}/products/`,
+    ]);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return { ...normalized, data: normalized.data.map(toProduct) };
+  } catch {
+    const all = await getProducts().catch(() => ({ data: [] as Product[] }));
+    const filtered = all.data.filter((p) => p.shopId === shopId);
+    return { data: filtered, count: filtered.length };
+  }
+}
+
+export async function getShopReviews(shopId: string): Promise<ShopReview[]> {
+  try {
+    const payload = await requestWithFallback<unknown>([
+      `/account/shops/${shopId}/reviews/`,
+      `/home/shops/${shopId}/reviews/`,
+    ]);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return normalized.data.map(toReview);
+  } catch {
+    return [];
+  }
+}
+
+export async function getSimilarShops(shopId: string): Promise<Shop[]> {
+  try {
+    const payload = await requestWithFallback<unknown>([
+      `/account/shops/${shopId}/similar/`,
+      `/home/shops/${shopId}/similar/`,
+    ]);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return normalized.data.map(toShop);
+  } catch {
+    return [];
+  }
 }

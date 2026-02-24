@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
-import { Container } from '@/components/layout/Container';
-import { ProductDetailView } from '@/components/marketplace/ProductDetailView';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
+import { ProductDetailView } from '@/components/marketplace/ProductDetailView';
 import { getProduct, getProducts } from '@/lib/api/endpoints';
 
 export default async function ProductPage({ params }: { params: Promise<{ productId: string }> }) {
@@ -11,7 +10,9 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
 
   const related = await getProducts()
     .then((response) => {
-      const sameCategory = response.data.filter((item) => item.id !== product.id && (item.category || '') === (product.category || ''));
+      const sameCategory = response.data.filter(
+        (item) => item.id !== product.id && (item.category || '') === (product.category || '')
+      );
       const fallback = response.data.filter((item) => item.id !== product.id);
       return (sameCategory.length ? sameCategory : fallback).slice(0, 4);
     })
@@ -19,16 +20,16 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
 
   return (
     <>
-      <Breadcrumb
-        items={[
-          { label: 'Home', href: '/' },
-          { label: product.category || 'Products', href: '/shops' },
-          { label: product.name }
-        ]}
-      />
-      <Container className="pb-14">
-        <ProductDetailView product={product} related={related} />
-      </Container>
+      <div className="pd-breadcrumb-wrap">
+        <Breadcrumb
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Products', href: '/products' },
+            { label: product.name },
+          ]}
+        />
+      </div>
+      <ProductDetailView product={product} related={related} />
     </>
   );
 }
