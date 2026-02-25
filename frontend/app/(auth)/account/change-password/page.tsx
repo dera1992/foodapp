@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
+import { CheckCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { AccentPanel } from '@/components/auth/AccentPanel';
 import { AuthBreadcrumb } from '@/components/auth/AuthBreadcrumb';
 import { FormField } from '@/components/auth/FormField';
 import { PasswordStrength } from '@/components/auth/PasswordStrength';
 import { SubmitButton } from '@/components/auth/SubmitButton';
+import { authPasswordChange } from '@/lib/api/endpoints';
 
 export default function ChangePasswordPage() {
   const [loading, setLoading] = useState(false);
@@ -16,11 +18,58 @@ export default function ChangePasswordPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const passwordsMatch = useMemo(
     () => newPassword.length > 0 && newPassword === confirmPassword,
     [newPassword, confirmPassword]
   );
+
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!passwordsMatch) return;
+    setError(null);
+    setLoading(true);
+    const form = new FormData(e.currentTarget);
+    const accessToken = document.cookie.match(/(?:^|; )access_token=([^;]*)/)?.[1];
+    try {
+      await authPasswordChange(
+        form.get('old_password') as string,
+        newPassword,
+        accessToken ? decodeURIComponent(accessToken) : ''
+      );
+      toast.success('Password updated successfully!');
+      setSuccess(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not update password. Please try again.';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="bf-auth-shell bf-auth-shell-register">
+        <div className="bf-auth-card">
+          <AccentPanel heading={<><span>Password</span><br /><em>updated!</em></>} description="Your account is now secured with your new password." />
+          <section className="bf-auth-form-panel">
+            <div className="bf-auth-form-header">
+              <AuthBreadcrumb current="Register" />
+              <h1>Password <span>changed</span></h1>
+            </div>
+            <div className="bf-auth-success">
+              <CheckCircle className="h-10 w-10" />
+              <p>Your password has been updated successfully. Use your new password the next time you sign in.</p>
+              <Link href="/" className="bf-auth-link">Go to homepage →</Link>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bf-auth-shell bf-auth-shell-register">
@@ -69,13 +118,9 @@ export default function ChangePasswordPage() {
             <p>Use a unique password you do not use on any other site.</p>
           </div>
 
-          <form
-            method="post"
-            action="/account/change-password/"
-            onSubmit={() => {
-              setLoading(true);
-            }}
-          >
+          {error && <div className="bf-auth-error">{error}</div>}
+
+          <form onSubmit={handleSubmit}>
             <FormField
               id="old_password"
               name="old_password"
@@ -155,10 +200,6 @@ export default function ChangePasswordPage() {
             <Link href="/login" className="bf-auth-link">
               Back to login
             </Link>
-          </p>
-          <p className="bf-auth-note">
-            <KeyRound className="h-3.5 w-3.5" />
-            Ready for backend password-change validation and session refresh.
           </p>
         </section>
       </div>

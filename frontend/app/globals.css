@@ -16,6 +16,20 @@
 
 * { border-color: var(--border); }
 
+/* Email availability spinner (register page) */
+.bf-auth-checking {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: bf-spin 0.7s linear infinite;
+}
+@keyframes bf-spin {
+  to { transform: rotate(360deg); }
+}
+
 body {
   font-family: var(--font-dm-sans), sans-serif;
   background: var(--background);
@@ -6772,6 +6786,7 @@ body { background: var(--cream); color: var(--text); overflow-x: hidden; }
 }
 .pd-subscribe-btn:hover { background: #d4edda; border-color: #4caf63; }
 .pd-subscribe-btn:disabled { opacity: .55; cursor: not-allowed; }
+.pd-subscribe-btn.subscribed { background: #d4edda; border-color: #2d7a3a; color: #1a4d24; cursor: default; }
 
 .pd-divider {
   border: none;

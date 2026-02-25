@@ -9,6 +9,12 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { PasswordStrength } from '@/components/auth/PasswordStrength';
 import type { Session } from '@/lib/auth/session';
+import {
+  getMyProfile, createProfile, patchProfile,
+  getMyDispatcherProfile, patchDispatcherProfile,
+  authPasswordChange,
+} from '@/lib/api/endpoints';
+import type { CustomerProfile, DispatcherProfile } from '@/types/api';
 
 type UserRole = NonNullable<Session['role']>;
 
@@ -72,15 +78,31 @@ const PASSWORD_DEFAULTS: PasswordForm = {
   new_password2: ''
 };
 
-function getCookie(name: string): string {
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.split('; ').find((row) => row.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : '';
+function buildCustomerPayload(draft: ProfileForm): Partial<CustomerProfile> {
+  return {
+    full_name: draft.displayName || undefined,
+    email: draft.email || undefined,
+    phone: draft.phone || undefined,
+    city: draft.city || undefined,
+    address: draft.address || undefined,
+    bio: draft.bio || undefined,
+    delivery_note: draft.customerDeliveryNote || undefined,
+    dietary_preference: draft.customerDietary || undefined,
+    household_size: draft.customerHouseholdSize || undefined,
+  };
 }
 
-function backendUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
-  return base ? `${base}${path}` : path;
+function buildDispatcherPayload(draft: ProfileForm): Partial<DispatcherProfile> {
+  return {
+    full_name: draft.displayName || undefined,
+    phone: draft.phone || undefined,
+    city: draft.city || undefined,
+    address: draft.address || undefined,
+    vehicle_type: draft.dispatcherVehicle || undefined,
+    plate_number: draft.dispatcherPlate || undefined,
+    service_area: draft.dispatcherServiceArea || undefined,
+    availability: draft.dispatcherAvailability || undefined,
+  };
 }
 
 function roleMeta(role: UserRole): RoleMeta {
@@ -173,106 +195,6 @@ function normalizeProfilePayload(payload: unknown, session?: Session): ProfileFo
   };
 }
 
-function profileEndpointCandidates(role?: Session['role']) {
-  switch (role) {
-    case 'shop':
-    case 'admin':
-      return ['/api/account/shops/me/', backendUrl('/account/shops/me/'), backendUrl('/account/shops/')];
-    case 'dispatcher':
-      return ['/api/account/dispatcher/profile/', backendUrl('/account/dispatcher/profile/'), backendUrl('/dispatcher/profile/')];
-    case 'customer':
-    default:
-      return ['/api/account/profile/', backendUrl('/account/profile/'), backendUrl('/home/profile/')];
-  }
-}
-
-function passwordEndpointCandidates() {
-  return ['/account/change-password/', '/api/account/change-password/', backendUrl('/account/change-password/')];
-}
-
-async function tryFetchProfile(role?: Session['role']) {
-  let lastError: unknown;
-  for (const url of profileEndpointCandidates(role)) {
-    try {
-      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
-      if (!res.ok) {
-        if (res.status === 404) continue;
-        throw new Error(`Profile request failed (${res.status})`);
-      }
-      const contentType = res.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/json')) return null;
-      return await res.json();
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  if (lastError) throw lastError;
-  return null;
-}
-
-async function trySaveProfile(role: Session['role'], payload: ProfileForm) {
-  const csrf = getCookie('csrftoken');
-  let lastError: unknown;
-
-  for (const url of profileEndpointCandidates(role)) {
-    for (const method of ['PATCH', 'PUT'] as const) {
-      try {
-        const res = await fetch(url, {
-          method,
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            ...(csrf ? { 'X-CSRFToken': csrf } : {})
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) return true;
-        if (res.status === 404 || res.status === 405) continue;
-        const text = await res.text();
-        throw new Error(text || `Save failed (${res.status})`);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-  }
-
-  throw lastError ?? new Error('Unable to save profile');
-}
-
-async function tryChangePassword(payload: PasswordForm) {
-  const csrf = getCookie('csrftoken');
-  let lastError: unknown;
-
-  for (const url of passwordEndpointCandidates()) {
-    try {
-      const formData = new FormData();
-      formData.append('old_password', payload.old_password);
-      formData.append('new_password1', payload.new_password1);
-      formData.append('new_password2', payload.new_password2);
-
-      const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(csrf ? { 'X-CSRFToken': csrf } : {})
-        },
-        body: formData
-      });
-
-      if (res.ok) return true;
-      if (res.status === 404) continue;
-      const text = await res.text();
-      throw new Error(text || `Password change failed (${res.status})`);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError ?? new Error('Unable to change password');
-}
 
 function FieldLabel({ htmlFor, label }: { htmlFor: string; label: string }) {
   return (
@@ -336,6 +258,7 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   const [passwordForm, setPasswordForm] = useState<PasswordForm>(PASSWORD_DEFAULTS);
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -350,17 +273,26 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
       setLoadingProfile(true);
       setProfileError('');
       try {
-        const payload = await tryFetchProfile(role);
+        const raw = role === 'dispatcher'
+          ? await getMyDispatcherProfile()
+          : await getMyProfile();
         if (cancelled) return;
-        const normalized = normalizeProfilePayload(payload, session);
-        setProfile(normalized);
-        setDraft(normalized);
+        if (raw) {
+          setProfileId(raw.id);
+          const normalized = normalizeProfilePayload(raw, session);
+          setProfile(normalized);
+          setDraft(normalized);
+        } else {
+          const fallback = normalizeProfilePayload(null, session);
+          setProfile(fallback);
+          setDraft(fallback);
+        }
       } catch {
         if (!cancelled) {
           const fallback = normalizeProfilePayload(null, session);
           setProfile(fallback);
           setDraft(fallback);
-          setProfileError('Live profile data could not be loaded. You can still edit and save when the endpoint is available.');
+          setProfileError('Profile data could not be loaded. You can still edit and save.');
         }
       } finally {
         if (!cancelled) setLoadingProfile(false);
@@ -393,7 +325,28 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
     setProfileMessage('');
     setProfileError('');
     try {
-      await trySaveProfile(role, draft);
+      if (role === 'dispatcher') {
+        const payload = buildDispatcherPayload(draft);
+        if (profileId) {
+          await patchDispatcherProfile(profileId, payload);
+        } else {
+          const fd = new FormData();
+          (Object.entries(payload) as [string, string | undefined][]).forEach(([k, v]) => {
+            if (v !== undefined) fd.append(k, v);
+          });
+          const { createDispatcherProfile } = await import('@/lib/api/endpoints');
+          const created = await createDispatcherProfile(fd);
+          setProfileId(created.id);
+        }
+      } else {
+        const payload = buildCustomerPayload(draft);
+        if (profileId) {
+          await patchProfile(profileId, payload);
+        } else {
+          const created = await createProfile(payload);
+          setProfileId(created.id);
+        }
+      }
       setProfile(draft);
       setEditing(false);
       setProfileMessage('Profile updated successfully.');
@@ -410,12 +363,14 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
     setPasswordSaving(true);
     setPasswordMessage('');
     setPasswordError('');
+    const tokenMatch = document.cookie.match(/(?:^|; )access_token=([^;]*)/);
+    const accessToken = tokenMatch ? decodeURIComponent(tokenMatch[1]) : '';
     try {
-      await tryChangePassword(passwordForm);
+      await authPasswordChange(passwordForm.old_password, passwordForm.new_password1, accessToken);
       setPasswordForm(PASSWORD_DEFAULTS);
       setPasswordMessage('Password changed successfully.');
-    } catch {
-      setPasswordError('Unable to change password right now. Please try again.');
+    } catch (err: unknown) {
+      setPasswordError(err instanceof Error ? err.message : 'Unable to change password right now. Please try again.');
     } finally {
       setPasswordSaving(false);
     }

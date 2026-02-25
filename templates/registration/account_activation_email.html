@@ -3,23 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="ie=edge">
-  <title>Registration Confirmation</title>
+  <title>Activate Your Bunchfood Account</title>
 </head>
-<body>
-
-{% autoescape off %}
-Hi {{ user.username }},
-
-    <p>Thanks you for registering with us.</p>
-    <p>Please click on the link below to confirm your registration.</p>
-
-<a href="http://{{ domain }}{% url 'activate' uidb64=uid token=token %}">Confirm your registration</a>
-
-<P>Regards,</P>
-
-<p>Bunchfood</p>
-{% endautoescape %}
-
+<body style="font-family: sans-serif; background: #faf8f3; margin: 0; padding: 32px 16px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+    <tr>
+      <td style="background: #2d7a3a; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700;">Bunchfood</h1>
+        <p style="margin: 6px 0 0; color: #b7ddbf; font-size: 14px;">Fresh deals. Less waste.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 32px;">
+        <h2 style="margin: 0 0 12px; color: #1a1a1a; font-size: 20px;">Activate your account</h2>
+        <p style="margin: 0 0 8px; color: #4b5563; font-size: 15px;">Hi {{ user.email }},</p>
+        <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px; line-height: 1.6;">
+          Thanks for signing up! Click the button below to confirm your email address and activate your account.
+        </p>
+        <a href="{{ activation_url }}"
+           style="display: inline-block; background: #2d7a3a; color: #ffffff; text-decoration: none;
+                  padding: 13px 28px; border-radius: 8px; font-size: 15px; font-weight: 600;">
+          Activate my account
+        </a>
+        <p style="margin: 24px 0 0; color: #9ca3af; font-size: 13px; line-height: 1.6;">
+          If the button doesn't work, copy and paste this link into your browser:<br>
+          <a href="{{ activation_url }}" style="color: #2d7a3a; word-break: break-all;">{{ activation_url }}</a>
+        </p>
+        <p style="margin: 16px 0 0; color: #9ca3af; font-size: 13px;">
+          If you didn't create a Bunchfood account, you can safely ignore this email.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 20px 32px; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #9ca3af; font-size: 12px;">© Bunchfood · Reducing food waste, one deal at a time.</p>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

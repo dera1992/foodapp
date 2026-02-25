@@ -18,7 +18,12 @@ const links: NavLink[] = [
   { href: '/admin/orders', label: 'Order Status', icon: '📋' },
   { href: '/admin/products', label: 'Product List', icon: '📦' },
   { href: '/admin/products/new', label: 'Add Product', icon: '➕' },
+  { href: '/admin/shops', label: 'Manage Shops', icon: '🏪' },
   { href: '/admin/customers', label: 'View Customers', icon: '👥' },
+  { href: '/admin/users', label: 'Manage Users', icon: '👤' },
+  { href: '/admin/plans', label: 'Sub. Plans', icon: '⭐' },
+  { href: '/admin/followers', label: 'Followers', icon: '🔔' },
+  { href: '/admin/integrations', label: 'Integrations', icon: '🔗' },
   { href: '/admin/settings', label: 'Settings', icon: '⚙️' }
 ];
 

@@ -2,22 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { DispatcherStepIndicator } from '@/components/dispatcher/StepIndicator';
 import { PersonalStep } from '@/components/dispatcher/PersonalStep';
 import { VehicleStep } from '@/components/dispatcher/VehicleStep';
 import { DispatcherSuccessScreen } from '@/components/dispatcher/SuccessScreen';
 import type { DispatcherStep, PersonalData, VehicleData } from '@/types/dispatcher';
-
-function backendOrigin() {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!base) return '';
-  try {
-    return new URL(base).origin;
-  } catch {
-    return '';
-  }
-}
+import { authDispatcherPersonal, authDispatcherVehicle } from '@/lib/api/endpoints';
 
 export function DispatcherOnboardingClient() {
   const router = useRouter();
@@ -42,6 +34,7 @@ export function DispatcherOnboardingClient() {
     vehicleFileName: null
   });
 
+  // Step 1: POST /auth/dispatcher/personal/ with personal data
   const submitStep1 = async () => {
     const fd = new FormData();
     fd.append('full_name', personal.fullName);
@@ -49,26 +42,17 @@ export function DispatcherOnboardingClient() {
     fd.append('id_number', personal.idNumber);
     fd.append('dob', personal.dob);
     if (personal.idDocument) fd.append('id_document', personal.idDocument);
-    const res = await fetch(`${backendOrigin()}/account/dispatcher/personal/`, {
-      method: 'POST',
-      credentials: 'include',
-      body: fd
-    });
-    if (!res.ok) throw new Error('personal failed');
+    await authDispatcherPersonal(fd);
   };
 
+  // Step 2: POST /auth/dispatcher/vehicle/ with vehicle data
   const submitStep2 = async () => {
     const fd = new FormData();
     fd.append('vehicle_type', vehicle.vehicleType);
     fd.append('plate_number', vehicle.plateNumber);
     fd.append('vehicle_model', vehicle.vehicleModel);
     if (vehicle.vehicleDocument) fd.append('vehicle_document', vehicle.vehicleDocument);
-    const res = await fetch(`${backendOrigin()}/account/dispatcher/vehicle/`, {
-      method: 'POST',
-      credentials: 'include',
-      body: fd
-    });
-    if (!res.ok) throw new Error('vehicle failed');
+    await authDispatcherVehicle(fd);
   };
 
   return (
@@ -90,8 +74,10 @@ export function DispatcherOnboardingClient() {
                 try {
                   await submitStep1();
                   setStep('vehicle');
-                } catch {
-                  setError('Something went wrong. Please try again.');
+                } catch (err: unknown) {
+                  const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+                  setError(msg);
+                  toast.error(msg);
                 } finally {
                   setLoading(false);
                 }
@@ -110,9 +96,12 @@ export function DispatcherOnboardingClient() {
                 setError('');
                 try {
                   await submitStep2();
+                  toast.success('Setup complete! Your dispatcher profile is ready.');
                   setStep('success');
-                } catch {
-                  setError('Something went wrong. Please try again.');
+                } catch (err: unknown) {
+                  const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+                  setError(msg);
+                  toast.error(msg);
                 } finally {
                   setLoading(false);
                 }

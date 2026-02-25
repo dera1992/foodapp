@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { OrderStatusDashboardPage } from '@/components/orders/OrderStatusDashboardPage';
 import { Container } from '@/components/layout/Container';
 import { getSession } from '@/lib/auth/session';
-import { getAdminOrders } from '@/lib/api/endpoints';
+import { getUserOrders } from '@/lib/api/endpoints';
 import { normalizeOrderStatusRows } from '@/lib/orders/normalizeOrderStatusRows';
 
 export default async function AccountOrdersPage() {
@@ -12,7 +12,7 @@ export default async function AccountOrdersPage() {
     redirect('/login');
   }
 
-  const payload = await getAdminOrders().catch(() => ({ data: [] as unknown[] }));
+  const payload = await getUserOrders().catch(() => ({ data: [] as unknown[] }));
   const orders = normalizeOrderStatusRows(payload.data as unknown[], session, 'customer');
 
   return (

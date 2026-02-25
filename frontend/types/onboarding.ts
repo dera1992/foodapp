@@ -14,6 +14,8 @@ export interface ShopAddressData {
   country: string;
   postalCode: string;
   locationCaptured: boolean;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ShopDocumentsData {

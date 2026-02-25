@@ -1,6 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import {
+  authShopInfo,
+  authShopAddress,
+  authShopDocs,
+  authShopPlan,
+} from '@/lib/api/endpoints';
 import type {
   OnboardingState,
   OnboardingStep,
@@ -12,44 +18,11 @@ import type {
 
 const STEP_ORDER: OnboardingStep[] = ['info', 'address', 'documents', 'plan'];
 
-function getBackendOrigin() {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!base) return '';
-  try {
-    return new URL(base).origin;
-  } catch {
-    return '';
-  }
-}
-
-async function postJson(path: string, payload: unknown) {
-  const origin = getBackendOrigin();
-  const response = await fetch(`${origin}${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response;
-}
-
-async function postForm(path: string, formData: FormData) {
-  const origin = getBackendOrigin();
-  const response = await fetch(`${origin}${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData
-  });
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response;
-}
-
 export function useOnboarding() {
   const [state, setState] = useState<OnboardingState>({
     currentStep: 'info',
     info: { name: '', description: '', logo: null, logoPreview: null },
-    address: { address: '', city: '', state: '', country: '', postalCode: '', locationCaptured: false },
+    address: { address: '', city: '', state: '', country: '', postalCode: '', locationCaptured: false, latitude: null, longitude: null },
     documents: { businessDocument: null, fileName: null },
     plan: { planId: 'free', planName: 'Free Plan' }
   });
@@ -78,16 +51,18 @@ export function useOnboarding() {
     formData.append('name', state.info.name);
     formData.append('description', state.info.description);
     if (state.info.logo) formData.append('logo', state.info.logo);
-    await postForm('/account/shop/info/', formData);
+    await authShopInfo(formData);
   };
 
   const submitAddress = async () => {
-    await postJson('/account/shop/address/', {
+    await authShopAddress({
       address: state.address.address,
       city: state.address.city,
       state: state.address.state,
       country: state.address.country,
-      postal_code: state.address.postalCode
+      postal_code: state.address.postalCode,
+      ...(state.address.latitude !== null && { latitude: state.address.latitude }),
+      ...(state.address.longitude !== null && { longitude: state.address.longitude }),
     });
   };
 
@@ -95,11 +70,11 @@ export function useOnboarding() {
     if (!state.documents.businessDocument) return;
     const formData = new FormData();
     formData.append('business_document', state.documents.businessDocument);
-    await postForm('/account/shop/docs/', formData);
+    await authShopDocs(formData);
   };
 
   const submitPlan = async () => {
-    await postJson('/account/shop/plan/', { plan: state.plan.planId });
+    await authShopPlan(state.plan.planId ?? 'free');
   };
 
   return {
@@ -117,4 +92,3 @@ export function useOnboarding() {
     submitPlan
   };
 }
-

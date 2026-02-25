@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, Heart, Mic, MicOff, Search, ShoppingCart } from 'lucide-react';
 import type { Session } from '@/lib/auth/session';
+import { authLogout } from '@/lib/api/endpoints';
 
 type BrowserSpeechRecognition = {
   lang: string;
@@ -114,16 +115,18 @@ export function Navbar({ session }: { session?: Session }) {
 
   const handleLogout = async () => {
     setAccountOpen(false);
-    try {
-      await fetch('/account/logout/', {
-        method: 'POST',
-        credentials: 'include'
-      });
-    } catch {
-      // Best effort: redirect even if endpoint is unavailable.
+    // Capture refresh token before it is cleared
+    const refreshMatch = document.cookie.match(/(?:^|; )refresh_token=([^;]*)/);
+    const refreshToken = refreshMatch ? decodeURIComponent(refreshMatch[1]) : '';
+    // Blacklist the refresh token on the backend (best effort)
+    if (refreshToken) {
+      try { await authLogout(refreshToken); } catch { /* ignore */ }
     }
-    router.push('/login');
-    router.refresh();
+    // Clear all cookies server-side via Set-Cookie headers.
+    // This is the only way to remove HttpOnly cookies (e.g. Django's sessionid)
+    // which JavaScript's document.cookie cannot touch.
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
   };
 
   return (
@@ -178,7 +181,7 @@ export function Navbar({ session }: { session?: Session }) {
                         <span className="bf-dd-lbl">Order Status</span>
                         <ChevronRightIcon className="bf-dd-arr" />
                       </Link>
-                      <Link href="/messages" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                      <Link href="/account/notifications" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
                         <div className="bf-dd-ic">🔔</div>
                         <span className="bf-dd-lbl">Shop notifications</span>
                         <ChevronRightIcon className="bf-dd-arr" />

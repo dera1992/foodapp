@@ -9,7 +9,7 @@ export default async function ChooseRolePage() {
     redirect('/login');
   }
 
-  if (session.role) {
+  if (session.role && session.role !== 'pending') {
     if (session.role === 'shop') redirect('/account/shop/onboarding');
     if (session.role === 'dispatcher') redirect('/account/dispatcher/onboarding');
     if (session.role === 'admin') redirect('/admin');

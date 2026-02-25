@@ -12,50 +12,77 @@ type ShopAddressStepProps = {
   onContinue: () => void;
 };
 
-function getApiOrigin() {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!apiBase) return '';
-  try {
-    return new URL(apiBase).origin;
-  } catch {
-    return '';
-  }
+interface NominatimResponse {
+  address?: {
+    road?: string;
+    house_number?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+    state?: string;
+    country?: string;
+    postcode?: string;
+  };
+}
+
+async function reverseGeocode(lat: number, lon: number): Promise<Partial<ShopAddressData>> {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+  const response = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  if (!response.ok) throw new Error('Nominatim error');
+  const data = (await response.json()) as NominatimResponse;
+  const a = data.address ?? {};
+  const streetParts = [a.house_number, a.road].filter(Boolean);
+  return {
+    address: streetParts.join(' '),
+    city: a.city ?? a.town ?? a.village ?? '',
+    state: a.state ?? '',
+    country: a.country ?? '',
+    postalCode: a.postcode ?? '',
+    latitude: Math.round(lat * 1e6) / 1e6,
+    longitude: Math.round(lon * 1e6) / 1e6,
+    locationCaptured: true,
+  };
 }
 
 export function ShopAddressStep({ address, loading, onUpdate, onBack, onContinue }: ShopAddressStepProps) {
   const [geoError, setGeoError] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
 
-  useEffect(() => {
-    if (!navigator.geolocation || address.locationCaptured) return;
+  const captureLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoError(true);
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError(false);
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
         try {
-          const origin = getApiOrigin();
-          const response = await fetch(`${origin}/api/geocode/?lat=${coords.latitude}&lng=${coords.longitude}`);
-          if (!response.ok) throw new Error('No geocode');
-          const data = (await response.json()) as Partial<{
-            address: string;
-            city: string;
-            state: string;
-            country: string;
-            postalCode: string;
-            postal_code: string;
-          }>;
-          onUpdate({
-            address: data.address ?? '',
-            city: data.city ?? '',
-            state: data.state ?? '',
-            country: data.country ?? '',
-            postalCode: data.postalCode ?? data.postal_code ?? '',
-            locationCaptured: true
-          });
+          const patch = await reverseGeocode(coords.latitude, coords.longitude);
+          onUpdate(patch);
         } catch {
-          setGeoError(true);
+          onUpdate({
+            latitude: Math.round(coords.latitude * 1e6) / 1e6,
+            longitude: Math.round(coords.longitude * 1e6) / 1e6,
+            locationCaptured: true,
+          });
+        } finally {
+          setGeoLoading(false);
         }
       },
-      () => setGeoError(true)
+      () => {
+        setGeoError(true);
+        setGeoLoading(false);
+      },
+      { timeout: 10000 }
     );
-  }, [address.locationCaptured, onUpdate]);
+  };
+
+  useEffect(() => {
+    if (address.locationCaptured) return;
+    captureLocation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
@@ -64,8 +91,18 @@ export function ShopAddressStep({ address, loading, onUpdate, onBack, onContinue
         <p>Add your shop location so customers can find you.</p>
       </header>
       <div className="bf-onboard-step-body">
-        {address.locationCaptured ? <p className="bf-onboard-geo-ok">Location captured from your browser.</p> : null}
-        {geoError ? <p className="bf-onboard-geo-note">Could not auto-detect location. Please fill in manually.</p> : null}
+        <div className="bf-onboard-geo-row">
+          {address.locationCaptured ? (
+            <p className="bf-onboard-geo-ok">Location captured automatically.</p>
+          ) : geoLoading ? (
+            <p className="bf-onboard-geo-note">Detecting your location…</p>
+          ) : (
+            <button type="button" className="bf-onboard-geo-btn" onClick={captureLocation}>
+              Use my current location
+            </button>
+          )}
+          {geoError ? <p className="bf-onboard-geo-note">Could not detect location. Please fill in manually or try again.</p> : null}
+        </div>
 
         <div className="bf-onboard-field">
           <label htmlFor="onb-address">Address</label>

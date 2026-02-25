@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 
 export type Session = {
   isAuthenticated: boolean;
-  role?: 'customer' | 'shop' | 'admin' | 'dispatcher';
+  role?: 'pending' | 'customer' | 'shop' | 'admin' | 'dispatcher';
   userId?: string;
 };
 

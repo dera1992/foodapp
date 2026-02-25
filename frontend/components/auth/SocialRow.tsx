@@ -1,6 +1,49 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { authSocialLogin } from '@/lib/api/endpoints';
+
 type SocialRowProps = {
   mode: 'login' | 'register';
 };
+
+// Google Identity Services types (loaded dynamically from accounts.google.com/gsi/client)
+type GsiTokenClient = { requestAccessToken: () => void };
+type GsiTokenResponse = { access_token?: string; error?: string };
+type GoogleAccounts = {
+  oauth2: {
+    initTokenClient: (opts: {
+      client_id: string;
+      scope: string;
+      callback: (response: GsiTokenResponse) => void;
+    }) => GsiTokenClient;
+  };
+};
+type WindowWithGoogle = Window & { google?: { accounts: GoogleAccounts } };
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
+
+function setCookie(name: string, value: string, days: number) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${days * 86400}; path=/; SameSite=Lax`;
+}
+
+function loadGsiScript(onLoad: () => void) {
+  if ((window as WindowWithGoogle).google?.accounts) {
+    onLoad();
+    return;
+  }
+  const existing = document.getElementById('gsi-script');
+  if (existing) {
+    existing.addEventListener('load', onLoad, { once: true });
+    return;
+  }
+  const script = document.createElement('script');
+  script.id = 'gsi-script';
+  script.src = 'https://accounts.google.com/gsi/client';
+  script.async = true;
+  script.onload = onLoad;
+  document.head.appendChild(script);
+}
 
 function GoogleIcon() {
   return (
@@ -36,22 +79,63 @@ function TwitterIcon() {
 }
 
 export function SocialRow({ mode }: SocialRowProps) {
+  const router = useRouter();
+
+  const handleSocialSuccess = async (provider: 'google' | 'facebook' | 'twitter', accessToken: string) => {
+    try {
+      const tokens = await authSocialLogin(provider, accessToken);
+      setCookie('access_token', tokens.access, 1);
+      setCookie('refresh_token', tokens.refresh, 30);
+      router.push(mode === 'register' ? '/account/choose-role' : '/');
+      router.refresh();
+    } catch (err) {
+      console.error(`${provider} social login failed:`, err);
+    }
+  };
+
+  const handleGoogle = () => {
+    if (!GOOGLE_CLIENT_ID) {
+      console.warn('Google OAuth not configured. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to your .env.local file.');
+      return;
+    }
+    loadGsiScript(() => {
+      const google = (window as WindowWithGoogle).google;
+      if (!google) return;
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'openid email profile',
+        callback: (response: GsiTokenResponse) => {
+          if (response.access_token) {
+            void handleSocialSuccess('google', response.access_token);
+          }
+        },
+      });
+      client.requestAccessToken();
+    });
+  };
+
+  const handleFacebook = () => {
+    console.warn('Facebook OAuth not yet configured. Add NEXT_PUBLIC_FACEBOOK_APP_ID to your .env.local file.');
+  };
+
+  const handleTwitter = () => {
+    console.warn('Twitter OAuth not yet configured. Add NEXT_PUBLIC_TWITTER_CLIENT_ID to your .env.local file.');
+  };
+
   return (
     <div className="bf-auth-social-row">
-      <a href="#" className="bf-auth-social-btn" aria-label="Continue with Google">
+      <button type="button" className="bf-auth-social-btn" aria-label="Continue with Google" onClick={handleGoogle}>
         <GoogleIcon />
         Google
-      </a>
-      <a href="#" className="bf-auth-social-btn" aria-label="Continue with Facebook">
+      </button>
+      <button type="button" className="bf-auth-social-btn" aria-label="Continue with Facebook" onClick={handleFacebook}>
         <FacebookIcon />
         Facebook
-      </a>
-      <a href="#" className="bf-auth-social-btn" aria-label="Continue with Twitter">
+      </button>
+      <button type="button" className="bf-auth-social-btn" aria-label="Continue with Twitter" onClick={handleTwitter}>
         <TwitterIcon />
         Twitter
-      </a>
-      <input type="hidden" name="auth_mode" value={mode} />
+      </button>
     </div>
   );
 }
-

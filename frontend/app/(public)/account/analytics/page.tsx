@@ -4,6 +4,7 @@ import { KPIStatCard } from '@/components/analytics/KPIStatCard';
 import { ProgressMetricRow } from '@/components/analytics/ProgressMetricRow';
 import { SectionEmptyState } from '@/components/analytics/SectionEmptyState';
 import { StatusPill } from '@/components/analytics/StatusPill';
+import { SubscribedShopsSection } from '@/components/analytics/SubscribedShopsSection';
 import { TableCard } from '@/components/analytics/TableCard';
 import { Container } from '@/components/layout/Container';
 import { getCustomerAnalyticsDashboard } from '@/lib/api/endpoints';
@@ -111,27 +112,7 @@ export default async function CustomerAnalyticsPage() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">
-          <TableCard title="Subscribed Shops" actionLabel="Manage ->" actionHref="/shops" className="bg-white">
-            {analytics?.subscribedShops.length ? (
-              <div className="space-y-1">
-                {analytics.subscribedShops.map((row) => (
-                  <div key={row.id} className="bf-analytics-list-row group">
-                    <div className="bf-analytics-avatar">{row.name.slice(0, 2).toUpperCase()}</div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-brand-text">{row.name}</p>
-                      <p className="text-xs text-brand-muted">{row.city || 'City unavailable'}</p>
-                    </div>
-                    <span className="rounded-full bg-brand-primaryLight px-3 py-1 text-xs font-semibold text-brand-primaryDark">Subscribed</span>
-                    <button type="button" className="hidden rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 group-hover:inline-flex">
-                      Unsubscribe
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <SectionEmptyState emoji="🔔" title="No subscriptions yet." description="Subscribe to stores to get notified of new deals." />
-            )}
-          </TableCard>
+          <SubscribedShopsSection initialShops={analytics?.subscribedShops ?? []} />
 
           <TableCard title="Recent Orders" actionLabel="View all ->" actionHref="/account/orders" className="bg-white">
             {analytics?.recentOrders.length ? (

@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { ConfirmCTA } from '@/components/role/ConfirmCTA';
 import { RolePageHeader } from '@/components/role/PageHeader';
 import { RolesGrid } from '@/components/role/RolesGrid';
 import type { RoleOption, UserRole } from '@/types/role';
+import { authChooseRole } from '@/lib/api/endpoints';
 
 const ROLES: RoleOption[] = [
   {
@@ -59,16 +61,6 @@ const ROLES: RoleOption[] = [
   }
 ];
 
-function getBackendOrigin() {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!base) return '';
-  try {
-    return new URL(base).origin;
-  } catch {
-    return '';
-  }
-}
-
 export function ChooseRoleClient() {
   const [selected, setSelected] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,19 +73,16 @@ export function ChooseRoleClient() {
     if (!selectedRole) return;
     setLoading(true);
     setError(null);
-
     try {
-      const origin = getBackendOrigin();
-      const response = await fetch(`${origin}/account/set-role/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: selectedRole.id })
-      });
-      if (!response.ok) throw new Error('Failed to save role');
+      await authChooseRole(selectedRole.id as 'customer' | 'shop' | 'dispatcher');
+      // Update the role cookie so session reads the new role immediately
+      document.cookie = `role=${selectedRole.id}; Max-Age=${30 * 24 * 3600}; path=/; SameSite=Lax`;
+      toast.success('Role saved! Taking you to setup…');
       router.push(selectedRole.redirectTo);
-    } catch {
-      setError('Unable to save your account type right now. Please try again.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to save your account type right now. Please try again.';
+      setError(msg);
+      toast.error(msg);
       setLoading(false);
     }
   };

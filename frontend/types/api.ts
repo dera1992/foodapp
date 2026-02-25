@@ -200,3 +200,95 @@ export type AdminAnalytics = {
   orders: number;
   lowStockCount: number;
 };
+
+export type CustomerProfile = {
+  id: string;
+  user?: string | number;
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  bio?: string;
+  delivery_note?: string;
+  dietary_preference?: string;
+  household_size?: string | number;
+};
+
+export type DispatcherProfile = {
+  id: string;
+  user?: string | number;
+  full_name?: string;
+  phone?: string;
+  id_number?: string;
+  dob?: string;
+  vehicle_type?: string;
+  plate_number?: string;
+  vehicle_model?: string;
+  service_area?: string;
+  availability?: string;
+};
+
+export type ShopFollower = {
+  id: string;
+  shop: string;
+  shop_name?: string;
+  shop_city?: string;
+  user?: string | number;
+  created_at?: string;
+};
+
+export type ShopSubscription = {
+  id: string;
+  shop: string;
+  shop_name?: string;
+  shop_city?: string;
+  shop_image?: string;
+  user?: string | number;
+  created_at?: string;
+};
+
+export type ShopNotification = {
+  id: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  product?: string | number;
+  shop: string;
+  shop_name?: string;
+  user?: string | number;
+};
+
+export type ShopIntegration = {
+  id: string;
+  name: string;
+  provider?: string;
+  api_key?: string;
+  webhook_url?: string;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type SubscriptionPlan = {
+  id: string;
+  name: string;
+  price: number;
+  product_limit?: number;
+  features?: string[];
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  role: 'pending' | 'customer' | 'shop' | 'dispatcher';
+  is_active: boolean;
+  date_joined?: string;
+};

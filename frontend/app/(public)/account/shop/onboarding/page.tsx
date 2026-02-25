@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { StepIndicator } from '@/components/onboarding/StepIndicator';
 import { ShopInfoStep } from '@/components/onboarding/ShopInfoStep';
@@ -59,8 +60,10 @@ export default function ShopOnboardingPage() {
               try {
                 await submitInfo();
                 goNext();
-              } catch {
-                setError('Unable to save shop basics right now.');
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Unable to save shop basics right now.';
+                setError(msg);
+                toast.error(msg);
               } finally {
                 setLoading(false);
               }
@@ -80,8 +83,10 @@ export default function ShopOnboardingPage() {
               try {
                 await submitAddress();
                 goNext();
-              } catch {
-                setError('Unable to save shop address right now.');
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Unable to save shop address right now.';
+                setError(msg);
+                toast.error(msg);
               } finally {
                 setLoading(false);
               }
@@ -101,8 +106,10 @@ export default function ShopOnboardingPage() {
               try {
                 await submitDocuments();
                 goNext();
-              } catch {
-                setError('Unable to upload document right now.');
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Unable to upload document right now.';
+                setError(msg);
+                toast.error(msg);
               } finally {
                 setLoading(false);
               }
@@ -121,9 +128,12 @@ export default function ShopOnboardingPage() {
               setError(null);
               try {
                 await submitPlan();
+                toast.success('Shop setup complete! Your shop is now live.');
                 setSuccess(true);
-              } catch {
-                setError('Something went wrong while finishing setup.');
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Something went wrong while finishing setup.';
+                setError(msg);
+                toast.error(msg);
               } finally {
                 setLoading(false);
               }

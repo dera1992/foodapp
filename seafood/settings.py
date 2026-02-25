@@ -38,6 +38,10 @@ DEBUG = env.bool("DEBUG", default=True)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
+# Frontend base URL — used to build links sent in emails (activation, password reset, etc.)
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+BACKEND_URL = env("BACKEND_URL", default="http://localhost:8000")
+
 
 # Application definition
 
@@ -89,6 +93,7 @@ INSTALLED_APPS = [
     'django_paystack',
      'ckeditor',
     # 'ckeditor_uploader',
+    'drf_spectacular',
 ]
 
 if GIS_ENABLED:
@@ -380,7 +385,10 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'seafood.api.exceptions.custom_exception_handler',
 }
 
+from datetime import timedelta
 SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'BLACKLIST_AFTER_ROTATION': True,
     'ROTATE_REFRESH_TOKENS': True,
 }

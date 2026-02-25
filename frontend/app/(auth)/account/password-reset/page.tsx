@@ -2,14 +2,57 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { ArrowLeft, KeyRound, Mail, Send } from 'lucide-react';
+import { toast } from 'sonner';
+import { ArrowLeft, CheckCircle, Mail, Send } from 'lucide-react';
 import { AccentPanel } from '@/components/auth/AccentPanel';
 import { AuthBreadcrumb } from '@/components/auth/AuthBreadcrumb';
 import { FormField } from '@/components/auth/FormField';
 import { SubmitButton } from '@/components/auth/SubmitButton';
+import { authPasswordReset } from '@/lib/api/endpoints';
 
 export default function PasswordResetPage() {
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await authPasswordReset(form.get('email') as string);
+      toast.success('Reset link sent! Check your inbox.');
+      setSent(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div className="bf-auth-shell bf-auth-shell-login">
+        <div className="bf-auth-card">
+          <AccentPanel heading={<><span>Check your</span><br /><em>inbox!</em></>} description="We sent a secure reset link to your email address." />
+          <section className="bf-auth-form-panel">
+            <div className="bf-auth-form-header">
+              <AuthBreadcrumb current="Login" />
+              <h1>Email <span>sent</span></h1>
+            </div>
+            <div className="bf-auth-success">
+              <CheckCircle className="h-10 w-10" />
+              <p>If an account with that email exists, you will receive a password reset link shortly. Check your spam folder if you don&apos;t see it.</p>
+              <Link href="/login" className="bf-auth-link">Back to login →</Link>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bf-auth-shell bf-auth-shell-login">
@@ -58,13 +101,9 @@ export default function PasswordResetPage() {
             <p>Enter your email address and we will send reset instructions.</p>
           </div>
 
-          <form
-            method="post"
-            action="/account/password-reset/"
-            onSubmit={() => {
-              setLoading(true);
-            }}
-          >
+          {error && <div className="bf-auth-error">{error}</div>}
+
+          <form onSubmit={handleSubmit}>
             <FormField
               id="email"
               name="email"
@@ -86,10 +125,6 @@ export default function PasswordResetPage() {
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to login
             </Link>
-          </p>
-          <p className="bf-auth-note">
-            <KeyRound className="h-3.5 w-3.5" />
-            This page is ready for your backend reset-email flow.
           </p>
         </section>
       </div>

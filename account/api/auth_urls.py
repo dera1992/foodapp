@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     ActivateAccountAPIView,
+    CheckEmailAPIView,
     ChooseRoleAPIView,
     CustomerSetupAPIView,
     DispatcherPersonalSetupAPIView,
@@ -24,6 +25,7 @@ from .views import (
 
 urlpatterns = [
     path('register/', RegisterAPIView.as_view(), name='api-register'),
+    path('check-email/', CheckEmailAPIView.as_view(), name='api-check-email'),
     path('activate/<str:uidb64>/<str:token>/', ActivateAccountAPIView.as_view(), name='api-activate'),
     path('login/', LoginAPIView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', RefreshAPIView.as_view(), name='token_refresh'),

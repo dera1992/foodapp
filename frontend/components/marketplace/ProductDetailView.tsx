@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import type { Product } from '@/types/api';
-import { addToCart, addWishlist } from '@/lib/api/endpoints';
+import { addToCart, addWishlist, subscribeShop } from '@/lib/api/endpoints';
 
 type Props = { product: Product; related: Product[] };
 type Tab = 'description' | 'nutrition' | 'reviews';
@@ -305,6 +305,7 @@ function RelatedCard({ product, index }: { product: Product; index: number }) {
 export function ProductDetailView({ product, related }: Props) {
   const [qty, setQty] = useState(1);
   const [wishlisted, setWishlisted] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('description');
   const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null);
   const [isPending, start] = useTransition();
@@ -341,6 +342,17 @@ export function ProductDetailView({ product, related }: Props) {
       addWishlist(product.id).catch(() => setWishlisted(false));
       setNotice({ msg: 'Added to wishlist!', ok: true });
     }
+  };
+
+  const onSubscribe = () => {
+    if (!product.shopId || subscribed) return;
+    setSubscribed(true);
+    subscribeShop(product.shopId)
+      .then(() => setNotice({ msg: 'Subscribed to shop! You will receive updates.', ok: true }))
+      .catch(() => {
+        setSubscribed(false);
+        setNotice({ msg: 'Could not subscribe right now.', ok: false });
+      });
   };
 
   const onCopyLink = () => {
@@ -413,8 +425,13 @@ export function ProductDetailView({ product, related }: Props) {
 
           {notice && <div className={`pd-notice${notice.ok ? ' ok' : ' err'}`}>{notice.msg}</div>}
 
-          <button type="button" className="pd-subscribe-btn" disabled={!product.shopId}>
-            <IconBell /> Subscribe to this Shop
+          <button
+            type="button"
+            className={`pd-subscribe-btn${subscribed ? ' subscribed' : ''}`}
+            disabled={!product.shopId || subscribed}
+            onClick={onSubscribe}
+          >
+            <IconBell /> {subscribed ? 'Subscribed ✓' : 'Subscribe to this Shop'}
           </button>
 
           <div className="pd-divider" />

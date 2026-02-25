@@ -84,6 +84,22 @@ class AuthAPIView(AccountAPIView):
     permission_classes = [permissions.AllowAny]
 
 
+class CheckEmailAPIView(AuthAPIView):
+
+    @extend_schema(responses=APIPayloadSerializer)
+    def post(self, request):
+        email = (request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response({"available": False, "detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+        exists = User.objects.filter(email__iexact=email).exists()
+        if exists:
+            return Response(
+                {"available": False, "detail": "An account with this email already exists."},
+                status=status.HTTP_200_OK,
+            )
+        return Response({"available": True}, status=status.HTTP_200_OK)
+
+
 class RegisterAPIView(AuthAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
@@ -97,15 +113,13 @@ class RegisterAPIView(AuthAPIView):
 
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = account_activation_token.make_token(user)
-        activation_path = f"/api/v1/auth/activate/{uid}/{token}/"
-        activation_url = request.build_absolute_uri(activation_path)
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        activation_url = f"{frontend_url}/account/activate/{uid}/{token}/"
 
         html_message = get_template("registration/account_activation_email.html").render(
             {
                 "user": user,
-                "domain": request.get_host(),
-                "uid": uid,
-                "token": token,
+                "activation_url": activation_url,
             }
         )
         email = EmailMessage(
@@ -139,7 +153,12 @@ class ActivateAccountAPIView(AuthAPIView):
 
         user.is_active = True
         user.save(update_fields=["is_active"])
-        return Response({"detail": "Account activated successfully"})
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "detail": "Account activated successfully",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        })
 
 
 class LoginAPIView(AuthAPIView):
@@ -254,19 +273,20 @@ class PasswordResetRequestAPIView(AuthAPIView):
         if user:
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
-            reset_path = f"/api/v1/auth/password-reset-confirm/{uid}/{token}/"
-            reset_url = request.build_absolute_uri(reset_path)
-            message = (
-                "You requested a password reset. "
-                f"Use this endpoint to set a new password: {reset_url}"
+            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+            reset_url = f"{frontend_url}/account/password-reset-confirm/{uid}/{token}/"
+            html_message = get_template("registration/password_reset_email.html").render({
+                "user": user,
+                "reset_url": reset_url,
+            })
+            email_msg = EmailMessage(
+                "Reset your Bunchfood password",
+                html_message,
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
+                to=[user.email],
             )
-            send_mail(
-                "Password reset request",
-                message,
-                getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
-                [user.email],
-                fail_silently=True,
-            )
+            email_msg.content_subtype = "html"
+            email_msg.send(fail_silently=True)
         return Response({"detail": "If the email exists, a reset link has been sent."})
 
 
@@ -354,7 +374,7 @@ class ShopPlanSetupAPIView(AccountAPIView):
     def post(self, request):
         shop, _ = Shop.objects.get_or_create(owner=request.user)
         plan_id = request.data.get("plan")
-        if plan_id:
+        if plan_id and str(plan_id).isdigit():
             plan = SubscriptionPlan.objects.filter(pk=plan_id).first()
             if not plan:
                 return Response({"detail": "Invalid plan"}, status=status.HTTP_400_BAD_REQUEST)
@@ -362,24 +382,42 @@ class ShopPlanSetupAPIView(AccountAPIView):
         shop.is_active = True
         shop.save(update_fields=["subscription", "is_active"])
 
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@bunchfood.com")
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        backend_url = getattr(settings, "BACKEND_URL", "http://localhost:8000")
+
+        # Email to the shop owner
+        owner_html = get_template("registration/shop_created_owner.html").render(
+            {"user": request.user, "shop": shop}
+        )
+        owner_email = EmailMessage(
+            "Your Bunchfood shop is under review",
+            owner_html,
+            from_email,
+            [request.user.email],
+        )
+        owner_email.content_subtype = "html"
+        owner_email.send(fail_silently=True)
+
+        # Email to all admins
         admin_emails = list(
             User.objects.filter(is_staff=True, is_superuser=True)
             .exclude(email="")
             .values_list("email", flat=True)
         )
         if admin_emails:
-            send_mail(
-                "New shop account opened",
-                (
-                    f"A new shop account has been opened.\n\n"
-                    f"Shop: {shop.name}\n"
-                    f"Owner: {request.user.email}\n"
-                    f"Shop ID: {shop.id}"
-                ),
-                getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
-                admin_emails,
-                fail_silently=True,
+            admin_url = f"{backend_url}/admin/account/shop/{shop.id}/change/"
+            admin_html = get_template("registration/shop_created_admin.html").render(
+                {"shop": shop, "owner_email": request.user.email, "admin_url": admin_url}
             )
+            admin_msg = EmailMessage(
+                f"New shop account opened – {shop.name}",
+                admin_html,
+                from_email,
+                admin_emails,
+            )
+            admin_msg.content_subtype = "html"
+            admin_msg.send(fail_silently=True)
 
         self._update_user_role(request.user, "shop")
         return Response({"detail": "Shop onboarding complete", "shop_id": shop.id})

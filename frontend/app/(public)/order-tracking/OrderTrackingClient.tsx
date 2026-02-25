@@ -142,7 +142,8 @@ export function OrderTrackingClient() {
     }));
 
     try {
-      const res = await fetch(`/api/orders/track/?ref=${encodeURIComponent(clean)}`, {
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api';
+      const res = await fetch(`${apiBase}/order/tracking/?ref=${encodeURIComponent(clean)}`, {
         credentials: 'include',
         cache: 'no-store'
       });

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Bunchfood Shop Is Under Review</title>
+</head>
+<body style="font-family: sans-serif; background: #faf8f3; margin: 0; padding: 32px 16px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+    <tr>
+      <td style="background: #2d7a3a; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700;">Bunchfood</h1>
+        <p style="margin: 6px 0 0; color: #b7ddbf; font-size: 14px;">Fresh deals. Less waste.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 32px;">
+        <h2 style="margin: 0 0 12px; color: #1a1a1a; font-size: 20px;">Your shop is under review</h2>
+        <p style="margin: 0 0 8px; color: #4b5563; font-size: 15px;">Hi {{ user.email }},</p>
+        <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px; line-height: 1.6;">
+          Congratulations! Your shop <strong style="color: #1a1a1a;">{{ shop.name }}</strong> has been successfully created on Bunchfood. Our team will review your details and get back to you shortly.
+        </p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 24px;">
+          <tr>
+            <td style="padding: 20px 24px;">
+              <p style="margin: 0 0 8px; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Shop Details</p>
+              <p style="margin: 0 0 4px; color: #1a1a1a; font-size: 14px;"><strong>Shop name:</strong> {{ shop.name }}</p>
+              <p style="margin: 0 0 4px; color: #1a1a1a; font-size: 14px;"><strong>Owner:</strong> {{ user.email }}</p>
+              <p style="margin: 0; color: #1a1a1a; font-size: 14px;"><strong>Shop ID:</strong> {{ shop.id }}</p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin: 0 0 0; color: #9ca3af; font-size: 13px; line-height: 1.6;">
+          You will receive another email once your shop has been approved and is live. If you have any questions, feel free to reach out to our support team.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 20px 32px; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #9ca3af; font-size: 12px;">© Bunchfood · Reducing food waste, one deal at a time.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

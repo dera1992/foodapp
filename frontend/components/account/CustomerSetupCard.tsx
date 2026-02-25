@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { ArrowRight, Building2, Info, Mail, MapPin, Phone } from 'lucide-react';
+import { authCustomerSetup } from '@/lib/api/endpoints';
 
 interface SetupForm {
   phone:      string;
@@ -35,21 +37,12 @@ function Field({ label, required, error, icon, children }: FieldProps) {
   );
 }
 
-function getBackendOrigin() {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!base) return '';
-  try {
-    return new URL(base).origin;
-  } catch {
-    return '';
-  }
-}
-
 export function CustomerSetupCard() {
   const router = useRouter();
   const [form, setForm] = useState<SetupForm>({ phone: '', address: '', city: '', postalCode: '' });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Partial<SetupForm>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const update = (field: keyof SetupForm) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -68,30 +61,18 @@ export function CustomerSetupCard() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const origin = getBackendOrigin();
-      const res = await fetch(`${origin}/api/account/customer/setup/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone:       form.phone,
-          address:     form.address,
-          city:        form.city,
-          postal_code: form.postalCode,
-        }),
+      await authCustomerSetup({
+        phone:       form.phone,
+        address:     form.address,
+        city:        form.city,
+        postal_code: form.postalCode,
       });
-      if (res.ok) {
-        router.push('/');
-      } else {
-        const data = await res.json().catch(() => ({}));
-        if (data.errors) {
-          setErrors({
-            phone:   data.errors.phone?.[0],
-            address: data.errors.address?.[0],
-            city:    data.errors.city?.[0],
-          });
-        }
-      }
+      toast.success('Profile complete! Welcome to Bunchfood.');
+      router.push('/');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Setup failed. Please try again.';
+      setApiError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -170,6 +151,8 @@ export function CustomerSetupCard() {
         </div>
 
       </div>
+
+      {apiError && <p className="bf-cs-field-error" style={{ margin: '0 24px 12px' }}>{apiError}</p>}
 
       {/* Footer buttons */}
       <div className="bf-cs-card-footer">

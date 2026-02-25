@@ -3,7 +3,7 @@ import Link from 'next/link';
 type AccentPanelProps = {
   heading: React.ReactNode;
   description: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 };
 
 export function AccentPanel({ heading, description, children }: AccentPanelProps) {

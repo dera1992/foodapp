@@ -12,7 +12,7 @@ from foodCreate.serializers import (
     SubCategorySerializer,
 )
 
-from .permissions import IsOwnerOrReadOnly
+from .permissions import IsOwnerOrReadOnly, IsShopUser
 
 
 class ReadPublicWriteOwnerViewSet(viewsets.ModelViewSet):
@@ -37,9 +37,9 @@ class ProductsViewSet(ReadPublicWriteOwnerViewSet):
     serializer_class = ProductsSerializer
 
     def get_permissions(self):
-        if self.action in ["lookup_product", "load_subcategories"]:
+        if self.action in ["lookup_product", "load_subcategories", "list", "retrieve"]:
             return [permissions.AllowAny()]
-        return super().get_permissions()
+        return [permissions.IsAuthenticated(), IsShopUser()]
 
     @action(detail=False, methods=["get"], url_path="load-subcategories")
     def load_subcategories(self, request):
@@ -100,7 +100,11 @@ class ProductsViewSet(ReadPublicWriteOwnerViewSet):
 class ProductsImagesViewSet(viewsets.ModelViewSet):
     queryset = ProductsImages.objects.all()
     serializer_class = ProductsImagesSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated(), IsShopUser()]
 
 
 class ReviewRatingViewSet(viewsets.ModelViewSet):

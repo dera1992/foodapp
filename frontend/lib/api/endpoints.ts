@@ -1,18 +1,26 @@
-import { ApiError, apiRequest } from '@/lib/api/client';
+import { ApiError, BASE_URL, apiRequest, formDataRequest } from '@/lib/api/client';
 import type {
   AdminAnalytics,
+  AdminUser,
   ApiListResponse,
   BudgetSummary,
   Cart,
   CartItem,
   CustomerAnalytics,
   CustomerAnalyticsDashboard,
+  CustomerProfile,
+  DispatcherProfile,
   Message,
   OrderSummary,
   Product,
   Shop,
   ShopAnalyticsDashboard,
+  ShopFollower,
+  ShopIntegration,
+  ShopNotification,
   ShopReview,
+  ShopSubscription,
+  SubscriptionPlan,
   Thread
 } from '@/types/api';
 
@@ -21,10 +29,12 @@ export const apiPaths = {
   shopsFallback: '/home/shops/',
   shopById: (shopId: string) => `/account/shops/${shopId}/`,
   shopByIdFallback: (shopId: string) => `/home/shops/${shopId}/`,
+  subscribeShop: (shopId: string) => `/home/shops/${shopId}/subscribe/`,
   products: '/home/ads/',
   productsFallback: '/foodcreate/productss/',
   productById: (productId: string) => `/foodcreate/productss/${productId}/`,
   productByIdFallback: (productId: string) => `/home/ads/${productId}/`,
+  submitReview: (postId: string) => `/home/submit-review/${postId}/`,
   cartList: '/cart/',
   cartAdd: '/cart/add/',
   cartRemove: '/cart/remove/',
@@ -34,22 +44,32 @@ export const apiPaths = {
   wishlist: '/home/favourites/',
   wishlistFallback: '/wishlist/',
   addWishlist: '/home/products/',
-  removeWishlist: (itemId: string) => `/wishlist/items/${itemId}/`,
+  removeWishlist: (itemId: string) => `/home/wishlist-items/${itemId}/`,
   customerAnalytics: '/home/analytics/customer/',
-  budget: '/budget/',
-  budgetItems: '/budget/items/',
-  budgetItemById: (id: string) => `/budget/items/${id}/`,
-  budgetTemplates: '/budget/templates/',
+  budget: '/budget/budgets/',
+  budgetItems: '/budget/shopping-list-items/',
+  budgetItemById: (id: string) => `/budget/shopping-list-items/${id}/`,
+  budgetTemplates: '/budget/budget-templates/',
   budgetInsights: '/budget/insights/',
   budgetSaved: '/budget/saved/',
-  threads: '/chat/threads/',
+  threads: '/chat/inbox/',
   threadById: (threadId: string) => `/chat/threads/${threadId}/`,
   sendReply: (threadId: string) => `/chat/threads/${threadId}/messages/`,
   adminAnalytics: '/home/analytics/shop/',
   adminProducts: '/foodcreate/productss/',
   adminOrders: '/order/orders/',
+  myOrders: '/order/my-orders/',
   adminCustomers: '/home/ads/customers/',
-  createProduct: '/foodcreate/productss/'
+  orderTracking: '/order/tracking/',
+  createProduct: '/foodcreate/productss/',
+  shopNotifications: '/account/shop-notifications/',
+  shopNotificationById: (id: string) => `/account/shop-notifications/${id}/`,
+  shopSubscriptions: '/account/shop-subscriptions/',
+  shopSubscriptionById: (id: string) => `/account/shop-subscriptions/${id}/`,
+  subscriptionPlans: '/account/subscription-plans/',
+  subscriptionPlanById: (id: string) => `/account/subscription-plans/${id}/`,
+  adminUsers: '/account/users/',
+  adminUserById: (id: string) => `/account/users/${id}/`,
 } as const;
 
 function toNumber(value: unknown): number {
@@ -649,6 +669,19 @@ export async function getAdminOrders() {
   return normalizeListResponse<{ id: string; customer: string; total: number; status: string }>(payload);
 }
 
+export async function getUserOrders() {
+  const payload = await requestWithFallback<unknown>([apiPaths.myOrders, apiPaths.adminOrders]);
+  return normalizeListResponse<{ id: string; customer: string; total: number; status: string }>(payload);
+}
+
+export async function subscribeShop(shopId: string) {
+  return apiRequest<ShopSubscription>(apiPaths.shopSubscriptions, { method: 'POST', body: { shop: shopId } });
+}
+
+export async function submitReview(postId: string, payload: { rating: number; body: string }) {
+  return apiRequest(apiPaths.submitReview(postId), { method: 'POST', body: payload });
+}
+
 export async function getAdminCustomers() {
   const payload = await apiRequest<unknown>(apiPaths.adminCustomers);
   return normalizeListResponse<{ id: string; name: string; orders: number; spend: number }>(payload);
@@ -700,4 +733,490 @@ export async function getSimilarShops(shopId: string): Promise<Shop[]> {
   } catch {
     return [];
   }
+}
+
+// ---- Auth helpers ----
+
+function authFetch(path: string, body: unknown, token?: string) {
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+export type AuthTokens = { access: string; refresh: string };
+export type MeResponse = {
+  id: string | number;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  role: 'pending' | 'customer' | 'shop' | 'dispatcher';
+  is_active: boolean;
+};
+
+/**
+ * Returns a map of fieldName → first error string extracted from a DRF response.
+ * Exported so UI components can highlight specific fields.
+ */
+export function extractDRFFieldErrors(data: unknown): Record<string, string> {
+  const d = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const errors: Record<string, string> = {};
+
+  // Unwrap {error: {detail: {...}}} or use root directly
+  const root = (d.error && typeof d.error === 'object' && !Array.isArray(d.error))
+    ? (d.error as Record<string, unknown>)
+    : d;
+
+  const scan = (obj: Record<string, unknown>) => {
+    for (const [key, val] of Object.entries(obj)) {
+      if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') {
+        if (!errors[key]) errors[key] = val[0];
+      }
+    }
+  };
+
+  if (root.detail && typeof root.detail === 'object' && !Array.isArray(root.detail)) {
+    scan(root.detail as Record<string, unknown>);
+  }
+  scan(root);
+  return errors;
+}
+
+export async function authCheckEmail(email: string): Promise<{ available: boolean; detail?: string }> {
+  const res = await authFetch('/auth/check-email/', { email });
+  const data = await res.json().catch(() => ({})) as { available?: boolean; detail?: string };
+  return { available: data.available ?? true, detail: data.detail };
+}
+
+export async function authLogin(email: string, password: string): Promise<AuthTokens> {
+  const res = await authFetch('/auth/login/', { email, password });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    let msg = '';
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const d = data as Record<string, unknown>;
+      // Unwrap {error: {detail: {...}}} wrapper the backend uses
+      const root = (d.error && typeof d.error === 'object' && !Array.isArray(d.error))
+        ? (d.error as Record<string, unknown>)
+        : d;
+      const detail = root.detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        msg = detail.trim();
+      } else if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+        for (const val of Object.values(detail as Record<string, unknown>)) {
+          if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') { msg = val[0]; break; }
+          if (typeof val === 'string' && val.trim()) { msg = val.trim(); break; }
+        }
+      }
+      if (!msg) {
+        for (const val of Object.values(root)) {
+          if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') { msg = val[0]; break; }
+        }
+      }
+    }
+    if (!msg) msg = 'Login failed.';
+    if (msg.toLowerCase().includes('no active account')) msg = 'Invalid email or password. Please try again.';
+    throw new ApiError(msg, res.status, data);
+  }
+  return data as AuthTokens;
+}
+
+export async function authRegister(payload: {
+  email: string;
+  password: string;
+}): Promise<{ detail: string }> {
+  const res = await authFetch('/auth/register/', payload);
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // Inline extraction so the call stack is easy to trace
+    let msg = '';
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const d = data as Record<string, unknown>;
+      // Unwrap {error: {detail: {...}}} wrapper the backend uses
+      const root = (d.error && typeof d.error === 'object' && !Array.isArray(d.error))
+        ? (d.error as Record<string, unknown>)
+        : d;
+      const detail = root.detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        msg = detail.trim();
+      } else if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+        for (const val of Object.values(detail as Record<string, unknown>)) {
+          if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') { msg = val[0]; break; }
+        }
+      }
+      if (!msg) {
+        for (const val of Object.values(root)) {
+          if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') { msg = val[0]; break; }
+        }
+      }
+    }
+    throw new ApiError(msg || 'Registration failed. Please try again.', res.status, data);
+  }
+  return data as { detail: string };
+}
+
+export async function authLogout(refreshToken: string): Promise<void> {
+  await authFetch('/auth/logout/', { refresh: refreshToken }).catch(() => null);
+}
+
+export async function authMe(accessToken: string): Promise<MeResponse> {
+  const res = await fetch(`${BASE_URL}/auth/me/`, {
+    credentials: 'include',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.detail || 'Failed to get user.', res.status, data);
+  return data as MeResponse;
+}
+
+export async function authPasswordReset(email: string): Promise<{ detail: string }> {
+  const res = await authFetch('/auth/password-reset/', { email });
+  const data = await res.json();
+  // Always 200 from backend regardless of whether email exists
+  return data as { detail: string };
+}
+
+export async function authPasswordResetConfirm(
+  uidb64: string,
+  token: string,
+  newPassword: string,
+): Promise<{ detail: string }> {
+  const res = await authFetch(`/auth/password-reset-confirm/${uidb64}/${token}/`, { new_password: newPassword });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.detail || 'Password reset failed.', res.status, data);
+  return data as { detail: string };
+}
+
+export async function authPasswordChange(
+  oldPassword: string,
+  newPassword: string,
+  accessToken: string,
+): Promise<{ detail: string }> {
+  const res = await authFetch('/auth/password-change/', { old_password: oldPassword, new_password: newPassword }, accessToken);
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.detail || 'Password change failed.', res.status, data);
+  return data as { detail: string };
+}
+
+export async function authChooseRole(role: 'customer' | 'shop' | 'dispatcher'): Promise<MeResponse> {
+  const payload = await apiRequest<MeResponse>('/auth/choose-role/', { method: 'POST', body: { role } });
+  return payload;
+}
+
+export async function authRefreshToken(refreshToken: string): Promise<{ access: string }> {
+  const res = await authFetch('/auth/token/refresh/', { refresh: refreshToken });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.detail || 'Session expired.', res.status, data);
+  return data as { access: string };
+}
+
+export async function authSocialLogin(
+  provider: 'google' | 'facebook' | 'twitter',
+  accessToken: string,
+): Promise<AuthTokens> {
+  const res = await authFetch('/auth/social/login/', { provider, access_token: accessToken });
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.detail || 'Social login failed.', res.status, data);
+  return data as AuthTokens;
+}
+
+export async function authShopInfo(formData: FormData): Promise<void> {
+  return formDataRequest('/auth/shop/info/', formData);
+}
+
+export async function authShopAddress(payload: {
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  postal_code: string;
+}): Promise<void> {
+  await apiRequest('/auth/shop/address/', { method: 'POST', body: payload });
+}
+
+export async function authShopDocs(formData: FormData): Promise<void> {
+  return formDataRequest('/auth/shop/docs/', formData);
+}
+
+export async function authShopPlan(planId: string): Promise<void> {
+  await apiRequest('/auth/shop/plan/', { method: 'POST', body: { plan: planId } });
+}
+
+export async function authActivate(uidb64: string, token: string): Promise<{ detail: string }> {
+  const res = await authFetch(`/auth/activate/${uidb64}/${token}/`, {});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError((data as { detail?: string }).detail || 'Activation failed or link has expired.', res.status, data);
+  const d = data as { access?: string; refresh?: string; detail: string };
+  if (d.access) document.cookie = `access_token=${encodeURIComponent(d.access)}; Max-Age=86400; path=/; SameSite=Lax`;
+  if (d.refresh) document.cookie = `refresh_token=${encodeURIComponent(d.refresh)}; Max-Age=${30 * 86400}; path=/; SameSite=Lax`;
+  // New accounts always start with pending role — set the cookie so middleware can enforce choose-role
+  document.cookie = `role=pending; Max-Age=86400; path=/; SameSite=Lax`;
+  return data as { detail: string };
+}
+
+export async function authCustomerSetup(payload: {
+  phone: string;
+  address: string;
+  city: string;
+  postal_code?: string;
+}): Promise<void> {
+  await apiRequest('/auth/customer/setup/', { method: 'POST', body: payload });
+}
+
+export async function authDispatcherPersonal(formData: FormData): Promise<void> {
+  return formDataRequest('/auth/dispatcher/personal/', formData);
+}
+
+export async function authDispatcherVehicle(formData: FormData): Promise<void> {
+  return formDataRequest('/auth/dispatcher/vehicle/', formData);
+}
+
+// ---- Customer Profiles ----
+
+function extractFirst<T>(raw: unknown): T | null {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return (raw[0] as T) ?? null;
+  const r = raw as Record<string, unknown>;
+  if (Array.isArray(r.results)) return (r.results[0] as T) ?? null;
+  if (Array.isArray(r.data)) return (r.data[0] as T) ?? null;
+  return raw as T;
+}
+
+export async function getMyProfile(): Promise<CustomerProfile | null> {
+  try {
+    const raw = await apiRequest<unknown>('/account/profiles/');
+    return extractFirst<CustomerProfile>(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function createProfile(payload: Partial<CustomerProfile>): Promise<CustomerProfile> {
+  return apiRequest<CustomerProfile>('/account/profiles/', { method: 'POST', body: payload });
+}
+
+export async function patchProfile(id: string, payload: Partial<CustomerProfile>): Promise<CustomerProfile> {
+  return apiRequest<CustomerProfile>(`/account/profiles/${id}/`, { method: 'PATCH', body: payload });
+}
+
+export async function updateProfile(id: string, payload: Partial<CustomerProfile>): Promise<CustomerProfile> {
+  return apiRequest<CustomerProfile>(`/account/profiles/${id}/`, { method: 'PUT', body: payload });
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  await apiRequest<void>(`/account/profiles/${id}/`, { method: 'DELETE' });
+}
+
+// ---- Dispatcher Profiles ----
+
+export async function getMyDispatcherProfile(): Promise<DispatcherProfile | null> {
+  try {
+    const raw = await apiRequest<unknown>('/account/dispatcher-profiles/');
+    return extractFirst<DispatcherProfile>(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function createDispatcherProfile(formData: FormData): Promise<DispatcherProfile> {
+  return formDataRequest<DispatcherProfile>('/account/dispatcher-profiles/', formData);
+}
+
+export async function patchDispatcherProfileForm(id: string, formData: FormData): Promise<DispatcherProfile> {
+  return formDataRequest<DispatcherProfile>(`/account/dispatcher-profiles/${id}/`, formData, 'PATCH');
+}
+
+export async function patchDispatcherProfile(id: string, payload: Partial<DispatcherProfile>): Promise<DispatcherProfile> {
+  return apiRequest<DispatcherProfile>(`/account/dispatcher-profiles/${id}/`, { method: 'PATCH', body: payload });
+}
+
+export async function deleteDispatcherProfile(id: string): Promise<void> {
+  await apiRequest<void>(`/account/dispatcher-profiles/${id}/`, { method: 'DELETE' });
+}
+
+// ---- Shop Followers ----
+
+export async function getShopFollowers(): Promise<ShopFollower[]> {
+  try {
+    const raw = await apiRequest<unknown>('/account/shop-followers/');
+    return normalizeListResponse<ShopFollower>(raw).data;
+  } catch {
+    return [];
+  }
+}
+
+export async function followShop(shopId: string): Promise<ShopFollower> {
+  return apiRequest<ShopFollower>('/account/shop-followers/', { method: 'POST', body: { shop: shopId } });
+}
+
+export async function unfollowShop(id: string): Promise<void> {
+  await apiRequest<void>(`/account/shop-followers/${id}/`, { method: 'DELETE' });
+}
+
+// ---- Shop Integrations ----
+
+export async function getShopIntegrations(): Promise<ShopIntegration[]> {
+  try {
+    const raw = await apiRequest<unknown>('/account/shop-integrations/');
+    return normalizeListResponse<ShopIntegration>(raw).data;
+  } catch {
+    return [];
+  }
+}
+
+export async function createIntegration(payload: Partial<ShopIntegration>): Promise<ShopIntegration> {
+  return apiRequest<ShopIntegration>('/account/shop-integrations/', { method: 'POST', body: payload });
+}
+
+export async function patchIntegration(id: string, payload: Partial<ShopIntegration>): Promise<ShopIntegration> {
+  return apiRequest<ShopIntegration>(`/account/shop-integrations/${id}/`, { method: 'PATCH', body: payload });
+}
+
+export async function deleteIntegration(id: string): Promise<void> {
+  await apiRequest<void>(`/account/shop-integrations/${id}/`, { method: 'DELETE' });
+}
+
+// ---- Shop Subscriptions ----
+
+export async function getShopSubscriptions(): Promise<ShopSubscription[]> {
+  try {
+    const raw = await apiRequest<unknown>(apiPaths.shopSubscriptions);
+    return normalizeListResponse<ShopSubscription>(raw).data;
+  } catch {
+    return [];
+  }
+}
+
+export async function getShopSubscription(id: string): Promise<ShopSubscription> {
+  return apiRequest<ShopSubscription>(apiPaths.shopSubscriptionById(id));
+}
+
+export async function createShopSubscription(shopId: string): Promise<ShopSubscription> {
+  return apiRequest<ShopSubscription>(apiPaths.shopSubscriptions, { method: 'POST', body: { shop: shopId } });
+}
+
+export async function updateShopSubscription(id: string, payload: Partial<ShopSubscription>): Promise<ShopSubscription> {
+  return apiRequest<ShopSubscription>(apiPaths.shopSubscriptionById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchShopSubscription(id: string, payload: Partial<ShopSubscription>): Promise<ShopSubscription> {
+  return apiRequest<ShopSubscription>(apiPaths.shopSubscriptionById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteShopSubscription(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.shopSubscriptionById(id), { method: 'DELETE' });
+}
+
+// ---- Shop Notifications ----
+
+export async function getShopNotifications(): Promise<ShopNotification[]> {
+  try {
+    const raw = await apiRequest<unknown>(apiPaths.shopNotifications);
+    return normalizeListResponse<ShopNotification>(raw).data;
+  } catch {
+    return [];
+  }
+}
+
+export async function getShopNotification(id: string): Promise<ShopNotification> {
+  return apiRequest<ShopNotification>(apiPaths.shopNotificationById(id));
+}
+
+export async function markNotificationRead(id: string): Promise<ShopNotification> {
+  return apiRequest<ShopNotification>(apiPaths.shopNotificationById(id), { method: 'PATCH', body: { is_read: true } });
+}
+
+export async function markAllNotificationsRead(notifications: ShopNotification[]): Promise<void> {
+  await Promise.allSettled(
+    notifications.filter((n) => !n.is_read).map((n) => markNotificationRead(n.id))
+  );
+}
+
+export async function deleteShopNotification(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.shopNotificationById(id), { method: 'DELETE' });
+}
+
+// ---- Admin Shop CRUD ----
+
+export async function createAdminShop(payload: Partial<Shop>): Promise<Shop> {
+  const raw = await apiRequest<unknown>(apiPaths.shops, { method: 'POST', body: payload });
+  return toShop(raw);
+}
+
+export async function updateAdminShop(id: string, payload: Partial<Shop>): Promise<Shop> {
+  const raw = await apiRequest<unknown>(apiPaths.shopById(id), { method: 'PUT', body: payload });
+  return toShop(raw);
+}
+
+export async function patchAdminShop(id: string, payload: Partial<Shop>): Promise<Shop> {
+  const raw = await apiRequest<unknown>(apiPaths.shopById(id), { method: 'PATCH', body: payload });
+  return toShop(raw);
+}
+
+export async function deleteAdminShop(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.shopById(id), { method: 'DELETE' });
+}
+
+// ---- Subscription Plans ----
+
+export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  try {
+    const raw = await apiRequest<unknown>(apiPaths.subscriptionPlans);
+    return normalizeListResponse<SubscriptionPlan>(raw).data;
+  } catch {
+    return [];
+  }
+}
+
+export async function getSubscriptionPlan(id: string): Promise<SubscriptionPlan> {
+  return apiRequest<SubscriptionPlan>(apiPaths.subscriptionPlanById(id));
+}
+
+export async function createSubscriptionPlan(payload: Partial<SubscriptionPlan>): Promise<SubscriptionPlan> {
+  return apiRequest<SubscriptionPlan>(apiPaths.subscriptionPlans, { method: 'POST', body: payload });
+}
+
+export async function updateSubscriptionPlan(id: string, payload: Partial<SubscriptionPlan>): Promise<SubscriptionPlan> {
+  return apiRequest<SubscriptionPlan>(apiPaths.subscriptionPlanById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchSubscriptionPlan(id: string, payload: Partial<SubscriptionPlan>): Promise<SubscriptionPlan> {
+  return apiRequest<SubscriptionPlan>(apiPaths.subscriptionPlanById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteSubscriptionPlan(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.subscriptionPlanById(id), { method: 'DELETE' });
+}
+
+// ---- Admin Users ----
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  try {
+    const raw = await apiRequest<unknown>(apiPaths.adminUsers);
+    return normalizeListResponse<AdminUser>(raw).data;
+  } catch {
+    return [];
+  }
+}
+
+export async function getAdminUser(id: string): Promise<AdminUser> {
+  return apiRequest<AdminUser>(apiPaths.adminUserById(id));
+}
+
+export async function createAdminUser(payload: Partial<AdminUser>): Promise<AdminUser> {
+  return apiRequest<AdminUser>(apiPaths.adminUsers, { method: 'POST', body: payload });
+}
+
+export async function patchAdminUser(id: string, payload: Partial<AdminUser>): Promise<AdminUser> {
+  return apiRequest<AdminUser>(apiPaths.adminUserById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteAdminUser(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.adminUserById(id), { method: 'DELETE' });
 }

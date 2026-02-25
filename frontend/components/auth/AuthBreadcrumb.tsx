@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ChevronRight, Home } from 'lucide-react';
 
 type AuthBreadcrumbProps = {
-  current: 'Login' | 'Register';
+  current: 'Login' | 'Register' | 'Activate' | 'Reset Password' | 'Change Password';
 };
 
 export function AuthBreadcrumb({ current }: AuthBreadcrumbProps) {
