@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronDown, Heart, Mic, MicOff, Search, ShoppingCart } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronDown, Heart, Mail, Mic, MicOff, Search, ShoppingCart } from 'lucide-react';
 import type { Session } from '@/lib/auth/session';
-import { authLogout } from '@/lib/api/endpoints';
+import { authLogout, getThreads } from '@/lib/api/endpoints';
 
 type BrowserSpeechRecognition = {
   lang: string;
@@ -39,11 +39,16 @@ function formatRole(role?: Session['role']) {
 
 export function Navbar({ session }: { session?: Session }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [query, setQuery] = useState('');
   const [listening, setListening] = useState(false);
   const [recognition, setRecognition] = useState<BrowserSpeechRecognition | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [messageNotice, setMessageNotice] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const unreadCountRef = useRef(0);
+  const unreadRefreshRef = useRef<(() => Promise<void>) | null>(null);
   const isAuthenticated = Boolean(session?.isAuthenticated);
 
   const dashboardHref =
@@ -93,6 +98,52 @@ export function Navbar({ session }: { session?: Session }) {
     };
   }, [accountOpen]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let active = true;
+    let timer: number | null = null;
+
+    const loadUnread = async () => {
+      try {
+        const threads = await getThreads().then((r) => r.data);
+        if (!active) return;
+        const nextUnread = threads.reduce((sum, thread) => sum + (thread.unreadCount ?? 0), 0);
+        setUnreadMessages(nextUnread);
+        if (nextUnread > unreadCountRef.current) {
+          const delta = nextUnread - unreadCountRef.current;
+          setMessageNotice(delta === 1 ? 'New message received' : `${delta} new messages`);
+          if (timer) window.clearTimeout(timer);
+          timer = window.setTimeout(() => setMessageNotice(null), 3000);
+        }
+        unreadCountRef.current = nextUnread;
+      } catch {
+        // Keep navbar polling silent.
+      }
+    };
+
+    unreadRefreshRef.current = loadUnread;
+
+    loadUnread();
+    const intervalId = window.setInterval(loadUnread, 15000);
+    const onRefreshUnread = () => {
+      void loadUnread();
+    };
+    window.addEventListener('chat:refresh-unread', onRefreshUnread);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('chat:refresh-unread', onRefreshUnread);
+      if (timer) window.clearTimeout(timer);
+      unreadRefreshRef.current = null;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!pathname?.startsWith('/messages')) return;
+    void unreadRefreshRef.current?.();
+  }, [isAuthenticated, pathname]);
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const params = new URLSearchParams();
@@ -136,6 +187,12 @@ export function Navbar({ session }: { session?: Session }) {
           <Link href="/" className="bf-logo">bunch<span>food</span></Link>
 
           <div className="bf-header-actions">
+            {isAuthenticated ? (
+              <Link href="/messages" className="bf-message-btn" title="Messages" aria-label="Messages">
+                <Mail size={18} />
+                {unreadMessages > 0 ? <span className="bf-message-badge">{unreadMessages}</span> : null}
+              </Link>
+            ) : null}
             <Link href="/wishlist" className="bf-wishlist-btn" title="Wishlist" aria-label="Wishlist">
               <Heart size={18} />
               <span className="bf-wishlist-badge">0</span>
@@ -209,6 +266,7 @@ export function Navbar({ session }: { session?: Session }) {
             )}
           </div>
         </div>
+        {messageNotice ? <div className="bf-message-toast">{messageNotice}</div> : null}
 
         <form className="bf-header-row2" onSubmit={onSubmit}>
           <div className="bf-search-bar">

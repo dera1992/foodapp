@@ -68,10 +68,27 @@ function getTimer() {
   return { h, m, s };
 }
 
+const RADIUS_OPTIONS = [2, 5, 10, 20] as const;
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export function LandingHome({ shops, products }: Props) {
   const [activeCategory, setActiveCategory] = useState('Vegetables');
   const [timer, setTimer] = useState({ h: 8, m: 42, s: 17 });
   const [added, setAdded] = useState<Record<string, boolean>>({});
+  const [radius, setRadius] = useState<number>(5);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [carouselIdx, setCarouselIdx] = useState(0);
 
   useEffect(() => {
     setTimer(getTimer());
@@ -79,10 +96,53 @@ export function LandingHome({ shops, products }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
+  const handleLocate = () => {
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError(null);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setUserCoords({ lat: coords.latitude, lng: coords.longitude });
+        setGeoLoading(false);
+      },
+      () => {
+        setGeoError('Could not detect your location. Please allow location access.');
+        setGeoLoading(false);
+      },
+      { timeout: 10000 },
+    );
+  };
+
+  const nearbyShops = useMemo(() => {
+    setCarouselIdx(0);
+    if (!userCoords) return shops;
+    return shops
+      .map((shop) => ({
+        ...shop,
+        distanceKm:
+          shop.latitude != null && shop.longitude != null
+            ? haversineKm(userCoords.lat, userCoords.lng, shop.latitude, shop.longitude)
+            : null,
+      }))
+      .filter((shop) => shop.distanceKm == null || shop.distanceKm <= radius)
+      .sort((a, b) => {
+        if (a.distanceKm == null && b.distanceKm == null) return 0;
+        if (a.distanceKm == null) return 1;
+        if (b.distanceKm == null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+  }, [shops, userCoords, radius]);
+
+  const carouselShop = nearbyShops[carouselIdx] ?? null;
+  const carouselPrev = () => setCarouselIdx((i) => (i - 1 + nearbyShops.length) % nearbyShops.length);
+  const carouselNext = () => setCarouselIdx((i) => (i + 1) % nearbyShops.length);
+
   const featured = products[0];
   const productGrid = useMemo(() => (products.length ? products.slice(0, 4) : []), [products]);
   const miniProducts = productGrid.slice(0, 4);
-  const nearbyShop = shops[0];
 
   const onAdd = (id: string) => {
     setAdded((prev) => ({ ...prev, [id]: true }));
@@ -99,7 +159,6 @@ export function LandingHome({ shops, products }: Props) {
         <div className="hero-blobs" />
 
         <div className="hero-inner">
-
           {/* LEFT COLUMN */}
           <div className="hero-left">
             <div className="hero-content">
@@ -108,27 +167,48 @@ export function LandingHome({ shops, products }: Props) {
                 <span className="hero-tag">🏪 Local shops</span>
                 <span className="hero-tag">🔥 Fresh deals</span>
               </div>
-              <h1>Save more on <br /><em>fresh food</em></h1>
+              <h1>
+                Save more on <br />
+                <em>fresh food</em>
+              </h1>
               <p className="hero-sub">Shop near-expiry deals</p>
-              <p>Discover trusted neighborhood shops, buy surplus food at unbeatable prices, and keep good food out of the bin.</p>
+              <p>
+                Discover trusted neighborhood shops, buy surplus food at
+                unbeatable prices, and keep good food out of the bin.
+              </p>
               <div className="hero-pills">
                 <span className="hero-pill">✓ Save up to 90%</span>
                 <span className="hero-pill">✓ Pick up fast</span>
                 <span className="hero-pill">✓ Verified sellers</span>
               </div>
               <div className="hero-ctas">
-                <Link href="/shops" className="btn-primary">Browse Deals →</Link>
-                <button className="btn-secondary" type="button">Find nearby shops</button>
+                <Link href="/products" className="btn-primary">
+                  Browse Deals →
+                </Link>
+                <Link href="/shops">
+                  <button className="btn-secondary" type="button">
+                    Find nearby shops
+                  </button>
+                </Link>
               </div>
             </div>
 
             {/* Stats — inline below CTAs */}
             <div className="hero-stats">
-              <div className="stat-card"><h3>2,400+</h3><p>Meals saved weekly</p></div>
+              <div className="stat-card">
+                <h3>2,400+</h3>
+                <p>Meals saved weekly</p>
+              </div>
               <div className="stat-divider" />
-              <div className="stat-card"><h3>90%</h3><p>Max savings</p></div>
+              <div className="stat-card">
+                <h3>90%</h3>
+                <p>Max savings</p>
+              </div>
               <div className="stat-divider" />
-              <div className="stat-card"><h3>140+</h3><p>Verified shops</p></div>
+              <div className="stat-card">
+                <h3>140+</h3>
+                <p>Verified shops</p>
+              </div>
             </div>
           </div>
 
@@ -138,22 +218,23 @@ export function LandingHome({ shops, products }: Props) {
 
             {/* Mini product grid — live deal teaser */}
             <div className="mini-grid">
-              {(miniProducts.length ? miniProducts : MINI_FALLBACK).map((p, i) => (
-                <Link
-                  key={p.id || i}
-                  href="/shops"
-                  className="mini-card"
-                >
-                  <div className="mini-emoji">{MINI_EMOJIS[i % 4]}</div>
-                  <div>
-                    <div className="mini-name">{p.name || MINI_FALLBACK[i]?.name}</div>
-                    <div className="mini-price">£{(p.price ?? 0).toFixed(2)}</div>
-                  </div>
-                </Link>
-              ))}
+              {(miniProducts.length ? miniProducts : MINI_FALLBACK).map(
+                (p, i) => (
+                  <Link key={p.id || i} href="/shops" className="mini-card">
+                    <div className="mini-emoji">{MINI_EMOJIS[i % 4]}</div>
+                    <div>
+                      <div className="mini-name">
+                        {p.name || MINI_FALLBACK[i]?.name}
+                      </div>
+                      <div className="mini-price">
+                        £{(p.price ?? 0).toFixed(2)}
+                      </div>
+                    </div>
+                  </Link>
+                ),
+              )}
             </div>
           </div>
-
         </div>
       </section>
 
@@ -163,8 +244,24 @@ export function LandingHome({ shops, products }: Props) {
       {/* ── MARQUEE ──────────────────────────────── */}
       <div className="marquee-wrap">
         <div className="marquee-track">
-          {['🥦 Fresh Vegetables', '🍎 Seasonal Fruits', '🥩 Quality Meats', '🐟 Fresh Seafood', '🌾 Wholegrains', '🧂 Spices & More', '🥦 Fresh Vegetables', '🍎 Seasonal Fruits', '🥩 Quality Meats', '🐟 Fresh Seafood', '🌾 Wholegrains', '🧂 Spices & More'].map((item, idx) => (
-            <span key={`${item}-${idx}`} className="marquee-item">{item}<i /></span>
+          {[
+            "🥦 Fresh Vegetables",
+            "🍎 Seasonal Fruits",
+            "🥩 Quality Meats",
+            "🐟 Fresh Seafood",
+            "🌾 Wholegrains",
+            "🧂 Spices & More",
+            "🥦 Fresh Vegetables",
+            "🍎 Seasonal Fruits",
+            "🥩 Quality Meats",
+            "🐟 Fresh Seafood",
+            "🌾 Wholegrains",
+            "🧂 Spices & More",
+          ].map((item, idx) => (
+            <span key={`${item}-${idx}`} className="marquee-item">
+              {item}
+              <i />
+            </span>
           ))}
         </div>
       </div>
@@ -172,18 +269,24 @@ export function LandingHome({ shops, products }: Props) {
       {/* ── SHOP BY CATEGORY ─────────────────────── */}
       <section className="section">
         <div className="section-header">
-          <h2 className="section-title">Shop by <span>category</span></h2>
-          <Link href="/shops" className="see-all">See all categories</Link>
+          <h2 className="section-title">
+            Shop by <span>category</span>
+          </h2>
+          <Link href="/products" className="see-all">
+            See all categories
+          </Link>
         </div>
         <div className="cat-grid">
           {categoryItems.map((cat) => (
             <button
               key={cat.label}
-              className={`cat-card ${activeCategory === cat.label ? 'active' : ''}`}
+              className={`cat-card ${activeCategory === cat.label ? "active" : ""}`}
               onClick={() => setActiveCategory(cat.label)}
               type="button"
             >
-              <div className="cat-icon" style={{ background: cat.bg }}>{cat.icon}</div>
+              <div className="cat-icon" style={{ background: cat.bg }}>
+                {cat.icon}
+              </div>
               <p>{cat.label}</p>
             </button>
           ))}
@@ -193,29 +296,129 @@ export function LandingHome({ shops, products }: Props) {
       {/* ── SHOP NEAR YOU ────────────────────────── */}
       <div className="location-section">
         <div className="location-left">
-          <h2>Shop <span style={{ color: 'var(--green)' }}>near you</span></h2>
-          <p>Share your location to see nearby shops within minutes. Find trusted sellers with fresh surplus deals right around the corner.</p>
+          <h2>
+            Shop <span style={{ color: "var(--green)" }}>near you</span>
+          </h2>
+          <p>
+            Share your location to see nearby shops within minutes. Find trusted
+            sellers with fresh surplus deals right around the corner.
+          </p>
           <div className="location-controls">
-            <button className="btn-locate" type="button">Use my location</button>
-            <div className="km-selector">5 km radius</div>
-          </div>
-          <p className="location-found">Found {shops.length} shop{shops.length === 1 ? '' : 's'} near you</p>
-          <div className="store-card">
-            <div className="store-img">🛒</div>
-            <div className="store-info">
-              <h4>{nearbyShop?.name || 'Local shop'}</h4>
-              <div className="store-addr">{nearbyShop?.address || 'Address unavailable'}</div>
-              <div className="store-meta">
-                <span className="badge-open">● Open</span>
-                <span className="stars">★ {nearbyShop?.rating?.toFixed(1) || '4.6'}</span>
-                <span className="store-dist">{nearbyShop?.distanceKm != null ? `${nearbyShop.distanceKm} km away` : 'Distance unavailable'}</span>
-              </div>
+            <button
+              className="btn-locate"
+              type="button"
+              onClick={handleLocate}
+              disabled={geoLoading}
+            >
+              {geoLoading
+                ? "Detecting…"
+                : userCoords
+                  ? "📍 Location set"
+                  : "Use my location"}
+            </button>
+            <div className="km-select-wrap">
+              <select
+                className="km-select"
+                value={radius}
+                onChange={(e) => setRadius(Number(e.target.value))}
+                aria-label="Search radius"
+              >
+                {RADIUS_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r} km
+                  </option>
+                ))}
+              </select>
             </div>
-            <Link href={nearbyShop ? `/shops/${nearbyShop.id}` : '/shops'} className="btn-view">View Details →</Link>
+            <Link href="/shops" className="btn-all-shops">
+              All shops →
+            </Link>
           </div>
+          {geoError && <p className="location-error">{geoError}</p>}
+          <p className="location-found">
+            {userCoords
+              ? `Found ${nearbyShops.length} shop${nearbyShops.length === 1 ? "" : "s"} within ${radius} km`
+              : `Found ${shops.length} shop${shops.length === 1 ? "" : "s"} near you`}
+          </p>
+
+          {carouselShop ? (
+            <div className="store-carousel">
+              <div className="store-card">
+                <div className="store-img">{carouselShop.emoji ?? "🛒"}</div>
+                <div className="store-info">
+                  <h4>{carouselShop.name}</h4>
+                  <div className="store-addr">
+                    {carouselShop.city
+                      ? `${carouselShop.address ?? ""}, ${carouselShop.city}`
+                      : (carouselShop.address ?? "Address unavailable")}
+                  </div>
+                  <div className="store-meta">
+                    <span className="badge-open">● Open</span>
+                    {carouselShop.rating != null && (
+                      <span className="stars">
+                        ★ {carouselShop.rating.toFixed(1)}
+                      </span>
+                    )}
+                    <span className="store-dist">
+                      📍{" "}
+                      {carouselShop.distanceKm != null
+                        ? carouselShop.distanceKm < 1
+                          ? `${Math.round(carouselShop.distanceKm * 1000)} m away`
+                          : `${carouselShop.distanceKm.toFixed(1)} km away`
+                        : userCoords
+                          ? "Distance unavailable"
+                          : "Enable location"}
+                    </span>
+                  </div>
+                </div>
+                <Link href={`/shops/${carouselShop.id}`} className="btn-view">
+                  View Details →
+                </Link>
+              </div>
+
+              {nearbyShops.length > 1 && (
+                <div className="carousel-controls">
+                  <button
+                    className="carousel-arrow"
+                    type="button"
+                    onClick={carouselPrev}
+                    aria-label="Previous shop"
+                  >
+                    &#8592;
+                  </button>
+                  <div className="carousel-dots">
+                    {nearbyShops.map((_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`carousel-dot${i === carouselIdx ? " active" : ""}`}
+                        onClick={() => setCarouselIdx(i)}
+                        aria-label={`Shop ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    className="carousel-arrow"
+                    type="button"
+                    onClick={carouselNext}
+                    aria-label="Next shop"
+                  >
+                    &#8594;
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="location-empty-msg">
+              No shops found within {radius} km. Try a larger radius.
+            </p>
+          )}
         </div>
+
         <div className="map-placeholder">
-          <div className="map-pin"><p>📍 {nearbyShop?.name || 'Nearby store'}</p></div>
+          <div className="map-pin">
+            <p>📍 {carouselShop?.name ?? "Nearby store"}</p>
+          </div>
         </div>
       </div>
 
@@ -223,12 +426,45 @@ export function LandingHome({ shops, products }: Props) {
       <section className="features-section">
         <div className="features-intro">
           <h2>Why choose bunchfood?</h2>
-          <p>We connect you with local shops selling quality food at reduced prices before it goes to waste.</p>
+          <p>
+            We connect you with local shops selling quality food at reduced
+            prices before it goes to waste.
+          </p>
         </div>
         <div className="features-grid">
-          <div className="feature-card"><div className="feature-icon" style={{ background: 'rgba(245,166,35,0.15)' }}>💰</div><h3>Shop surplus, save money</h3><p>Find items at dramatically reduced prices as they get closer to expiry.</p></div>
-          <div className="feature-card"><div className="feature-icon" style={{ background: 'rgba(76,175,99,0.2)' }}>📍</div><h3>Buy from nearby stores</h3><p>Support small shops and get deliveries or pick-ups faster.</p></div>
-          <div className="feature-card"><div className="feature-icon" style={{ background: 'rgba(52,211,153,0.15)' }}>🌱</div><h3>Help reduce waste</h3><p>Every purchase prevents good food from being thrown away.</p></div>
+          <div className="feature-card">
+            <div
+              className="feature-icon"
+              style={{ background: "rgba(245,166,35,0.15)" }}
+            >
+              💰
+            </div>
+            <h3>Shop surplus, save money</h3>
+            <p>
+              Find items at dramatically reduced prices as they get closer to
+              expiry.
+            </p>
+          </div>
+          <div className="feature-card">
+            <div
+              className="feature-icon"
+              style={{ background: "rgba(76,175,99,0.2)" }}
+            >
+              📍
+            </div>
+            <h3>Buy from nearby stores</h3>
+            <p>Support small shops and get deliveries or pick-ups faster.</p>
+          </div>
+          <div className="feature-card">
+            <div
+              className="feature-icon"
+              style={{ background: "rgba(52,211,153,0.15)" }}
+            >
+              🌱
+            </div>
+            <h3>Help reduce waste</h3>
+            <p>Every purchase prevents good food from being thrown away.</p>
+          </div>
         </div>
       </section>
 
@@ -236,32 +472,68 @@ export function LandingHome({ shops, products }: Props) {
       <section className="deal-section">
         <div className="section-header">
           <div>
-            <p className="deal-label">🔥 Limited picks — updated every morning</p>
-            <h2 className="section-title">Deal of the <span>Day</span></h2>
+            <p className="deal-label">
+              🔥 Limited picks — updated every morning
+            </p>
+            <h2 className="section-title">
+              Deal of the <span>Day</span>
+            </h2>
           </div>
         </div>
         <div className="deal-banner">
           <div className="deal-content">
             <div className="deal-badge">🔥 Today only</div>
-            <h2>{featured ? asName(featured) : 'Organic Versatile Greens'}</h2>
-            <p className="deal-shop">📍 From {featured ? asShop(featured) : 'rockflint · Bolton'}</p>
+            <h2>{featured ? asName(featured) : "Organic Versatile Greens"}</h2>
+            <p className="deal-shop">
+              📍 From {featured ? asShop(featured) : "rockflint · Bolton"}
+            </p>
             <div className="deal-price-row">
-              <span className="price-new">£{(featured?.price ?? 0.5).toFixed(2)}</span>
-              <span className="price-old">£{(featured?.oldPrice ?? 2).toFixed(2)}</span>
-              <span className="discount-tag">{Math.max(savings(featured || { price: 0.5 } as Product), 75)}% OFF</span>
+              <span className="price-new">
+                £{(featured?.price ?? 0.5).toFixed(2)}
+              </span>
+              <span className="price-old">
+                £{(featured?.oldPrice ?? 2).toFixed(2)}
+              </span>
+              <span className="discount-tag">
+                {Math.max(savings(featured || ({ price: 0.5 } as Product)), 75)}
+                % OFF
+              </span>
             </div>
-            <p className="deal-sub">Best before today · Perfectly fresh · Pick up today</p>
+            <p className="deal-sub">
+              Best before today · Perfectly fresh · Pick up today
+            </p>
             <p className="deal-exp">⏰ Expires in:</p>
             <div className="deal-timer">
-              <div className="timer-block"><span className="t-num">{String(timer.h).padStart(2, '0')}</span><span className="t-label">Hours</span></div>
-              <div className="timer-block"><span className="t-num">{String(timer.m).padStart(2, '0')}</span><span className="t-label">Mins</span></div>
-              <div className="timer-block"><span className="t-num">{String(timer.s).padStart(2, '0')}</span><span className="t-label">Secs</span></div>
+              <div className="timer-block">
+                <span className="t-num">
+                  {String(timer.h).padStart(2, "0")}
+                </span>
+                <span className="t-label">Hours</span>
+              </div>
+              <div className="timer-block">
+                <span className="t-num">
+                  {String(timer.m).padStart(2, "0")}
+                </span>
+                <span className="t-label">Mins</span>
+              </div>
+              <div className="timer-block">
+                <span className="t-num">
+                  {String(timer.s).padStart(2, "0")}
+                </span>
+                <span className="t-label">Secs</span>
+              </div>
             </div>
-            <button className="btn-deal" type="button">Grab this deal</button>
+            <button className="btn-deal" type="button">
+              Grab this deal
+            </button>
           </div>
           <div className="deal-image-side">
             <div className="deal-product-img">🥬</div>
-            <div className="deal-tags"><span className="deal-tag">Organic</span><span className="deal-tag">Near expiry</span><span className="deal-tag">Local shop</span></div>
+            <div className="deal-tags">
+              <span className="deal-tag">Organic</span>
+              <span className="deal-tag">Near expiry</span>
+              <span className="deal-tag">Local shop</span>
+            </div>
           </div>
         </div>
       </section>
@@ -269,8 +541,12 @@ export function LandingHome({ shops, products }: Props) {
       {/* ── FRESH VEGETABLES ─────────────────────── */}
       <section className="section section-products">
         <div className="section-header">
-          <h2 className="section-title">Fresh <span>Vegetables</span></h2>
-          <Link href="/shops" className="see-all">Show all</Link>
+          <h2 className="section-title">
+            Fresh <span>Vegetables</span>
+          </h2>
+          <Link href="/products" className="see-all">
+            Show all
+          </Link>
         </div>
         <div className="products-grid">
           {(productGrid.length ? productGrid : [
@@ -281,9 +557,13 @@ export function LandingHome({ shops, products }: Props) {
           ] as Product[]).map((product, idx) => (
             <div className="product-card" key={product.id || idx}>
               <div className="product-img">
-                {['🥦', '🥕', '🍅', '🥬'][idx % 4]}
-                <span className="expiry-badge">Exp: {expiryDays(product)} days</span>
-                <span className="save-badge">Save {Math.max(savings(product), 70)}%</span>
+                {["🥦", "🥕", "🍅", "🥬"][idx % 4]}
+                <span className="expiry-badge">
+                  Exp: {expiryDays(product)} days
+                </span>
+                <span className="save-badge">
+                  Save {Math.max(savings(product), 70)}%
+                </span>
               </div>
               <div className="product-body">
                 <p className="product-store">{asShop(product)}</p>
@@ -291,11 +571,22 @@ export function LandingHome({ shops, products }: Props) {
                 <p className="product-weight">{asWeight(product)}</p>
                 <div className="product-footer">
                   <div className="prices">
-                    <span className="p-new">£{(product.price ?? 0).toFixed(2)}</span>
-                    <span className="p-old">£{((product.oldPrice ?? product.price ?? 0) as number).toFixed(2)}</span>
+                    <span className="p-new">
+                      £{(product.price ?? 0).toFixed(2)}
+                    </span>
+                    <span className="p-old">
+                      £
+                      {(
+                        (product.oldPrice ?? product.price ?? 0) as number
+                      ).toFixed(2)}
+                    </span>
                   </div>
-                  <button className="add-btn" onClick={() => onAdd(String(product.id || idx))} type="button">
-                    {added[String(product.id || idx)] ? '✓' : '+'}
+                  <button
+                    className="add-btn"
+                    onClick={() => onAdd(String(product.id || idx))}
+                    type="button"
+                  >
+                    {added[String(product.id || idx)] ? "✓" : "+"}
                   </button>
                 </div>
               </div>

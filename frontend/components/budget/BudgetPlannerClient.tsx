@@ -1,16 +1,26 @@
 'use client';
 
-import { FormEvent, useMemo, useState, useTransition } from 'react';
+import { FormEvent, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Copy, Lightbulb, ListChecks, Plus, PlusCircle, Save, ShoppingCart, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, Check, Copy, Lightbulb, ListChecks, Pencil, Plus, PlusCircle, Save, ShoppingCart, Sparkles, Trash2, X } from 'lucide-react';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
+import { ApiError } from '@/lib/api/client';
 import {
   addBudgetItem,
+  addBudgetItemsFromCart,
+  applyBudgetTemplate,
   createBudget,
+  deleteBudget,
+  deleteBudgetTemplate,
+  duplicateBudget,
   getBudget,
+  getBudgetById,
   getSavedBudgets,
+  getBudgetTemplates,
   removeBudgetItem,
   saveTemplate,
+  updateBudget,
+  updateBudgetTemplate,
   updateBudgetItem
 } from '@/lib/api/endpoints';
 import { formatCurrency } from '@/lib/utils/money';
@@ -33,13 +43,25 @@ const offerPool: Offer[] = [
 
 const categoryColors = ['#4caf63', '#f5a623', '#3b82f6', '#8b5cf6', '#e84040'];
 
+function toActionErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError && error.status === 401) {
+    return 'Please sign in to use budget features.';
+  }
+  return fallback;
+}
+
 export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initialInsights }: BudgetPlannerClientProps) {
   const [budget, setBudget] = useState<BudgetSummary | null>(initialBudget);
   const [savedBudgets, setSavedBudgets] = useState<BudgetSummary[]>(initialSavedBudgets);
   const [insights] = useState<BudgetInsight[]>(initialInsights);
+  const [templates, setTemplates] = useState<Array<{ id: string; name: string; monthlyLimit: number; itemCount: number }>>([]);
   const [nameInput, setNameInput] = useState('');
   const [qtyInput, setQtyInput] = useState(1);
   const [templateName, setTemplateName] = useState('');
+  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+  const [editingBudgetAmount, setEditingBudgetAmount] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateName, setEditingTemplateName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -65,12 +87,26 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
 
   const offers = offerPool.filter((offer) => offer.price <= Math.max(remaining, 0)).slice(0, 4);
 
+  useEffect(() => {
+    let active = true;
+    getBudgetTemplates()
+      .then((result) => {
+        if (active) setTemplates(result.data);
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const syncBudget = () => {
     startTransition(async () => {
       const nextBudget = await getBudget().catch(() => budget);
       if (nextBudget) setBudget(nextBudget);
       const nextSaved = await getSavedBudgets().catch(() => ({ data: savedBudgets }));
       setSavedBudgets(nextSaved.data);
+      const nextTemplates = await getBudgetTemplates().catch(() => ({ data: templates }));
+      setTemplates(nextTemplates.data);
     });
   };
 
@@ -80,12 +116,12 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     setNotice(null);
     startTransition(async () => {
       try {
-        const next = await addBudgetItem({ name: nameInput.trim(), quantity: qtyInput, price: 0 });
+        const next = await addBudgetItem({ name: nameInput.trim(), quantity: qtyInput, price: 0 }, budget?.id);
         setBudget(next);
         setNameInput('');
         setQtyInput(1);
-      } catch {
-        setNotice('Unable to add item right now.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to add item right now.'));
       }
     });
   };
@@ -95,10 +131,10 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     setNotice(null);
     startTransition(async () => {
       try {
-        const next = await updateBudgetItem(id, { quantity: nextQty });
+        const next = await updateBudgetItem(id, { quantity: nextQty }, budget?.id);
         setBudget(next);
-      } catch {
-        setNotice('Unable to update quantity.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to update quantity.'));
       }
     });
   };
@@ -107,10 +143,10 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     setNotice(null);
     startTransition(async () => {
       try {
-        const next = await removeBudgetItem(id);
+        const next = await removeBudgetItem(id, budget?.id);
         setBudget(next);
-      } catch {
-        setNotice('Unable to remove item.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to remove item.'));
       }
     });
   };
@@ -120,16 +156,30 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     setNotice(null);
     startTransition(async () => {
       try {
-        await createBudget({ name: `${budget.name} copy`, monthlyLimit: budget.monthlyLimit });
+        const next = await duplicateBudget(budget.id);
+        setBudget(next);
         syncBudget();
-      } catch {
-        setNotice('Could not duplicate budget.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Could not duplicate budget.'));
       }
     });
   };
 
   const onAddFromCart = () => {
-    setNotice('Add-from-cart endpoint is not mapped yet.');
+    if (!budget?.id) {
+      setNotice('Create or select a budget first.');
+      return;
+    }
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const next = await addBudgetItemsFromCart(budget.id);
+        setBudget(next);
+        syncBudget();
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Could not import cart items into budget.'));
+      }
+    });
   };
 
   const onSaveTemplate = (event: FormEvent<HTMLFormElement>) => {
@@ -138,10 +188,22 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     setNotice(null);
     startTransition(async () => {
       try {
-        await saveTemplate({ name: templateName.trim(), monthlyLimit: budget.monthlyLimit });
+        const created = await saveTemplate({
+          name: templateName.trim(),
+          monthlyLimit: budget.monthlyLimit,
+          items: budget.items.map((item) => ({
+            id: item.id,
+            productId: item.productId,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            category: item.category
+          }))
+        });
+        setTemplates((current) => [created, ...current.filter((item) => item.id !== created.id)]);
         setTemplateName('');
-      } catch {
-        setNotice('Unable to save template.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to save template.'));
       }
     });
   };
@@ -152,8 +214,8 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
       try {
         await createBudget({ name: `Budget ${savedBudgets.length + 1}`, monthlyLimit: totalBudget > 0 ? totalBudget : 100 });
         syncBudget();
-      } catch {
-        setNotice('Could not create budget.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Could not create budget.'));
       }
     });
   };
@@ -162,10 +224,133 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     setNotice(null);
     startTransition(async () => {
       try {
-        const next = await addBudgetItem({ name: offer.name, quantity: 1, price: offer.price });
+        const next = await addBudgetItem({ name: offer.name, quantity: 1, price: offer.price }, budget?.id);
         setBudget(next);
-      } catch {
-        setNotice('Unable to add offer item.');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to add offer item.'));
+      }
+    });
+  };
+
+  const onSelectSavedBudget = (id: string) => {
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const next = await getBudgetById(id);
+        setBudget(next);
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Could not load selected budget.'));
+      }
+    });
+  };
+
+  const onApplyTemplate = (templateId: string) => {
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const next = await applyBudgetTemplate(templateId, budget?.id);
+        setBudget(next);
+        syncBudget();
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to apply template.'));
+      }
+    });
+  };
+
+  const beginBudgetEdit = (item: BudgetSummary, event?: React.MouseEvent | React.KeyboardEvent) => {
+    event?.stopPropagation();
+    setEditingBudgetId(item.id);
+    setEditingBudgetAmount(String(item.monthlyLimit || ''));
+  };
+
+  const cancelBudgetEdit = (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setEditingBudgetId(null);
+    setEditingBudgetAmount('');
+  };
+
+  const saveBudgetEdit = (id: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const nextAmount = Number.parseFloat(editingBudgetAmount);
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+      setNotice('Enter a valid budget amount.');
+      return;
+    }
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const updated = await updateBudget(id, { monthlyLimit: nextAmount });
+        setSavedBudgets((current) => current.map((item) => (item.id === id ? updated : item)));
+        if (budget?.id === id) setBudget(updated);
+        setEditingBudgetId(null);
+        setEditingBudgetAmount('');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to update budget.'));
+      }
+    });
+  };
+
+  const onDeleteBudget = (id: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        await deleteBudget(id);
+        setSavedBudgets((current) => {
+          const next = current.filter((item) => item.id !== id);
+          if (budget?.id === id) {
+            setBudget(next[0] ?? null);
+          }
+          return next;
+        });
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to delete budget.'));
+      }
+    });
+  };
+
+  const beginTemplateEdit = (template: { id: string; name: string }, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setEditingTemplateId(template.id);
+    setEditingTemplateName(template.name);
+  };
+
+  const cancelTemplateEdit = (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setEditingTemplateId(null);
+    setEditingTemplateName('');
+  };
+
+  const saveTemplateEdit = (id: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const nextName = editingTemplateName.trim();
+    if (!nextName) return;
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const updated = await updateBudgetTemplate(id, { name: nextName });
+        setTemplates((current) => current.map((item) => (item.id === id ? { ...item, ...updated } : item)));
+        setEditingTemplateId(null);
+        setEditingTemplateName('');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to update template.'));
+      }
+    });
+  };
+
+  const onDeleteTemplate = (id: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        await deleteBudgetTemplate(id);
+        setTemplates((current) => current.filter((item) => item.id !== id));
+        if (editingTemplateId === id) {
+          setEditingTemplateId(null);
+          setEditingTemplateName('');
+        }
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to delete template.'));
       }
     });
   };
@@ -381,6 +566,83 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
               </button>
             </form>
             <p className="bf-budget-muted">Save this plan as a template to reuse in the future.</p>
+            {templates.length ? (
+              <div className="mt-3 space-y-2">
+                {templates.slice(0, 5).map((template) => (
+                  <div key={template.id} className="bf-saved-item">
+                    <div className="top">
+                      {editingTemplateId === template.id ? (
+                        <input
+                          value={editingTemplateName}
+                          onChange={(event) => setEditingTemplateName(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
+                        />
+                      ) : (
+                        <strong>{template.name}</strong>
+                      )}
+                      <span>{formatCurrency(template.monthlyLimit)}</span>
+                    </div>
+                    <p>
+                      {template.itemCount} item{template.itemCount === 1 ? '' : 's'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="bf-budget-btn is-dark is-sm"
+                        onClick={() => onApplyTemplate(template.id)}
+                        disabled={isPending}
+                      >
+                        Apply template
+                      </button>
+                      {editingTemplateId === template.id ? (
+                        <>
+                          <button
+                            type="button"
+                            className="bf-budget-btn is-green is-sm"
+                            onClick={(event) => saveTemplateEdit(template.id, event)}
+                            disabled={isPending}
+                            aria-label={`Save ${template.name}`}
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className="bf-budget-btn is-amber is-sm"
+                            onClick={cancelTemplateEdit}
+                            disabled={isPending}
+                            aria-label={`Cancel editing ${template.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="bf-budget-btn is-amber is-sm"
+                            onClick={(event) => beginTemplateEdit(template, event)}
+                            disabled={isPending}
+                            aria-label={`Edit ${template.name}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className="bf-budget-btn is-amber is-sm"
+                            onClick={(event) => onDeleteTemplate(template.id, event)}
+                            disabled={isPending}
+                            aria-label={`Delete ${template.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </article>
 
           <article className="bf-budget-card bf-budget-card-pad is-ai">
@@ -403,15 +665,85 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
             <h3 className="bf-budget-card-title">Saved Budgets</h3>
             {savedBudgets.length ? (
               savedBudgets.map((item) => (
-                <div key={item.id} className={`bf-saved-item ${budget?.id === item.id ? 'active' : ''}`}>
+                <div
+                  key={item.id}
+                  className={`bf-saved-item ${budget?.id === item.id ? 'active' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectSavedBudget(item.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelectSavedBudget(item.id);
+                    }
+                  }}
+                >
                   <div className="top">
-                    <strong>Budget {formatCurrency(item.monthlyLimit)}</strong>
+                    {editingBudgetId === item.id ? (
+                      <input
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={editingBudgetAmount}
+                        onChange={(event) => setEditingBudgetAmount(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
+                        aria-label="Budget amount"
+                      />
+                    ) : (
+                      <strong>Budget {formatCurrency(item.monthlyLimit)}</strong>
+                    )}
                     <span>{new Date().toLocaleDateString('en-GB')}</span>
                   </div>
                   <p>
                     Spent <span className="spent">{formatCurrency(item.spent)}</span> - Remaining{' '}
                     <span className="remaining">{formatCurrency(item.remaining)}</span>
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {editingBudgetId === item.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="bf-budget-btn is-green is-sm"
+                          onClick={(event) => saveBudgetEdit(item.id, event)}
+                          disabled={isPending}
+                          aria-label="Save budget"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="bf-budget-btn is-amber is-sm"
+                          onClick={cancelBudgetEdit}
+                          disabled={isPending}
+                          aria-label="Cancel budget edit"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="bf-budget-btn is-amber is-sm"
+                          onClick={(event) => beginBudgetEdit(item, event)}
+                          disabled={isPending}
+                          aria-label="Edit budget"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="bf-budget-btn is-amber is-sm"
+                          onClick={(event) => onDeleteBudget(item.id, event)}
+                          disabled={isPending}
+                          aria-label="Delete budget"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))
             ) : (

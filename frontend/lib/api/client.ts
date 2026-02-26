@@ -24,9 +24,32 @@ type RequestOptions = {
   next?: { revalidate?: number; tags?: string[] };
 };
 
-// Attempt to refresh the access token using the stored refresh token (client-side only).
+// Attempt to refresh the access token using the stored refresh token.
+// Works on both client (reads document.cookie) and server (reads next/headers cookies).
 async function tryRefreshToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined') {
+    // Server context — read refresh token from next/headers cookies and call backend directly
+    try {
+      const { cookies } = await import('next/headers');
+      const store = await cookies();
+      const refreshToken = store.get('refresh_token')?.value;
+      if (!refreshToken) return null;
+      const res = await fetch(`${BASE_URL}/auth/token/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: refreshToken }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.access as string) ?? null;
+      // Note: the middleware already handles persisting the new cookie for the next request.
+      // Here we just return the token so the current server render can retry successfully.
+    } catch {
+      return null;
+    }
+  }
+
+  // Client context — read from document.cookie and persist the new token
   const match = document.cookie.match(/(?:^|; )refresh_token=([^;]*)/);
   if (!match) return null;
   const refreshToken = decodeURIComponent(match[1]);
@@ -83,8 +106,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     next,
   });
 
-  // Auto-refresh on 401 (client-side only) then retry once
-  if (response.status === 401 && typeof window !== 'undefined') {
+  // Auto-refresh on 401 (client + server) then retry once
+  if (response.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       const retryResponse = await fetch(`${BASE_URL}${path}`, {
@@ -140,7 +163,7 @@ export async function formDataRequest<T = void>(
   let token = await getAccessToken();
   let response = await doFetch(token);
 
-  if (response.status === 401 && typeof window !== 'undefined') {
+  if (response.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       response = await doFetch(newToken);

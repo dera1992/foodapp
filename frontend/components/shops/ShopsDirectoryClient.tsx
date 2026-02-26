@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Package, MapPin } from 'lucide-react';
+import { Search, Package, MapPin, Star, Store, Users } from 'lucide-react';
+import { getNearbyShops } from '@/lib/api/endpoints';
 import type { Shop } from '@/types/api';
 
-type Props = { shops: Shop[] };
+type Props = { shops: Shop[]; isAuthenticated: boolean; currentUserId?: string | null };
 type Filter = 'all' | 'open' | 'vegetables' | 'seafood' | 'grains' | 'meats' | 'top' | 'near';
 type SortKey = 'rating' | 'newest' | 'products';
 type ViewMode = 'list' | 'grid';
@@ -18,7 +19,9 @@ function StarRating({ value }: { value: number }) {
     <span className="scl-badge">
       <span className="scl-stars">
         {[1, 2, 3, 4, 5].map((n) => (
-          <span key={n} className={`star${n > rounded ? ' empty' : ''}`}>★</span>
+          <span key={n} className={`star${n > rounded ? ' empty' : ''}`}>
+            <Star size={12} fill={n <= rounded ? 'currentColor' : 'none'} strokeWidth={1.8} />
+          </span>
         ))}
       </span>
       <span>{value.toFixed(1)}</span>
@@ -26,8 +29,14 @@ function StarRating({ value }: { value: number }) {
   );
 }
 
-function ShopListCard({ shop, index }: { shop: Shop; index: number }) {
+function ShopListCard({
+  shop,
+  index,
+  isAuthenticated,
+  currentUserId,
+}: { shop: Shop; index: number; isAuthenticated: boolean; currentUserId?: string | null }) {
   const color = COVER_COLORS[index % 3];
+  const isOwnShop = Boolean(isAuthenticated && currentUserId && shop.ownerUserId && String(currentUserId) === String(shop.ownerUserId));
   return (
     <div className="shop-card-list">
       <div className={`scl-cover${color ? ` ${color}` : ''}`} />
@@ -35,7 +44,7 @@ function ShopListCard({ shop, index }: { shop: Shop; index: number }) {
         <div className="scl-avatar">
           {shop.image
             ? <img src={shop.image} alt={shop.name} />
-            : (shop.emoji || '🛒')}
+            : <Store size={18} />}
         </div>
         <div className="scl-info">
           <div className="scl-name">{shop.name}</div>
@@ -58,21 +67,33 @@ function ShopListCard({ shop, index }: { shop: Shop; index: number }) {
             )}
             {shop.rating != null && <StarRating value={shop.rating} />}
             {shop.subscriberCount != null && (
-              <div className="scl-badge">🔥 {shop.subscriberCount} subscribers</div>
+              <div className="scl-badge"><Users size={12} /> {shop.subscriberCount} subscribers</div>
             )}
           </div>
         </div>
         <div className="scl-actions">
-          <Link href={`/shops/${shop.id}`} className="btn-view-shop">View shop →</Link>
-          <Link href={`/messages?shop=${shop.id}`} className="btn-chat">💬 Chat</Link>
+          <Link href={`/shops/${shop.id}`} className="btn-view-shop">View shop</Link>
+          {isOwnShop ? (
+            <Link href={`/messages?shop=${shop.id}&ownerInbox=1`} className="btn-chat">Messages</Link>
+          ) : isAuthenticated ? (
+            <Link href={`/messages?shop=${shop.id}`} className="btn-chat">Chat</Link>
+          ) : (
+            <Link href="/login" className="btn-chat">Login to chat</Link>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function ShopGridCard({ shop, index }: { shop: Shop; index: number }) {
+function ShopGridCard({
+  shop,
+  index,
+  isAuthenticated,
+  currentUserId,
+}: { shop: Shop; index: number; isAuthenticated: boolean; currentUserId?: string | null }) {
   const color = COVER_COLORS[index % 3];
+  const isOwnShop = Boolean(isAuthenticated && currentUserId && shop.ownerUserId && String(currentUserId) === String(shop.ownerUserId));
   return (
     <Link href={`/shops/${shop.id}`} className="shop-card-grid">
       <div className={`scg-cover${color ? ` ${color}` : ''}`}>
@@ -80,7 +101,7 @@ function ShopGridCard({ shop, index }: { shop: Shop; index: number }) {
           <div className={`dot${shop.isOpen === false ? ' closed' : ''}`} />
           {shop.isOpen === false ? 'Closed' : 'Open'}
         </div>
-        <div className="scg-avatar">{shop.emoji || '🛒'}</div>
+        <div className="scg-avatar">{shop.emoji || <Store size={20} />}</div>
       </div>
       <div className="scg-body">
         <div className="scg-name">{shop.name}</div>
@@ -89,32 +110,44 @@ function ShopGridCard({ shop, index }: { shop: Shop; index: number }) {
         </div>
         <div className="scg-meta">
           {shop.productsCount != null && (
-            <div className="scg-stat">📦 {shop.productsCount}</div>
+            <div className="scg-stat">Products {shop.productsCount}</div>
           )}
           {shop.rating != null && (
-            <div className="scg-stat">⭐ {shop.rating.toFixed(1)}</div>
+            <div className="scg-stat">Rating {shop.rating.toFixed(1)}</div>
           )}
           {shop.subscriberCount != null && (
-            <div className="scg-stat">🔥 {shop.subscriberCount}</div>
+            <div className="scg-stat">Subs {shop.subscriberCount}</div>
           )}
         </div>
         <div className="scg-footer">
-          <span className="btn-view-shop">View shop →</span>
-          <span className="btn-chat">Chat</span>
+          <span className="btn-view-shop">View shop</span>
+          <span className="btn-chat">{isOwnShop ? 'Messages' : isAuthenticated ? 'Chat' : 'Login to chat'}</span>
         </div>
       </div>
     </Link>
   );
 }
 
-export function ShopsDirectoryClient({ shops }: Props) {
+export function ShopsDirectoryClient({ shops, isAuthenticated, currentUserId }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<SortKey>('rating');
   const [view, setView] = useState<ViewMode>('list');
+  const [nearbyShops, setNearbyShops] = useState<Shop[] | null>(null);
+  const [nearLoading, setNearLoading] = useState(false);
+
+  const activateFilter = (next: Filter) => {
+    setFilter(next);
+    if (next !== 'near' || nearbyShops || nearLoading) return;
+    setNearLoading(true);
+    void getNearbyShops()
+      .then((result) => setNearbyShops(result.data))
+      .catch(() => setNearbyShops([]))
+      .finally(() => setNearLoading(false));
+  };
 
   const filtered = useMemo(() => {
-    let list = shops.slice();
+    let list = (filter === 'near' && nearbyShops ? nearbyShops : shops).slice();
 
     if (query.trim()) {
       const q = query.trim().toLowerCase();
@@ -137,17 +170,17 @@ export function ShopsDirectoryClient({ shops }: Props) {
     if (sort === 'products') list = [...list].sort((a, b) => (b.productsCount ?? 0) - (a.productsCount ?? 0));
 
     return list;
-  }, [shops, query, filter, sort]);
+  }, [shops, nearbyShops, query, filter, sort]);
 
   const chips: { key: Filter; label: string; dot?: boolean }[] = [
     { key: 'all', label: 'All shops' },
     { key: 'open', label: 'Open now', dot: true },
-    { key: 'vegetables', label: '🥦 Vegetables' },
-    { key: 'seafood', label: '🐟 Seafood' },
-    { key: 'grains', label: '🌾 Grains' },
-    { key: 'meats', label: '🥩 Meats' },
-    { key: 'top', label: '⭐ 4.5+' },
-    { key: 'near', label: '📍 Near me' },
+    { key: 'vegetables', label: 'Vegetables' },
+    { key: 'seafood', label: 'Seafood' },
+    { key: 'grains', label: 'Grains' },
+    { key: 'meats', label: 'Meats' },
+    { key: 'top', label: 'Top rated 4.5+' },
+    { key: 'near', label: 'Near me' },
   ];
 
   return (
@@ -164,7 +197,7 @@ export function ShopsDirectoryClient({ shops }: Props) {
             <Search size={16} />
             <input
               type="text"
-              placeholder="Start typing a shop name or city…"
+              placeholder="Start typing a shop name or city..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -188,14 +221,14 @@ export function ShopsDirectoryClient({ shops }: Props) {
                 onClick={() => setView('list')}
                 type="button"
               >
-                ≡ List
+                List
               </button>
               <button
                 className={`sd-vt-btn${view === 'grid' ? ' active' : ''}`}
                 onClick={() => setView('grid')}
                 type="button"
               >
-                ⊞ Grid
+                Grid
               </button>
             </div>
           </div>
@@ -209,7 +242,7 @@ export function ShopsDirectoryClient({ shops }: Props) {
           <button
             key={c.key}
             className={`sd-chip${filter === c.key ? ' active' : ''}`}
-            onClick={() => setFilter(c.key)}
+            onClick={() => activateFilter(c.key)}
             type="button"
           >
             {c.dot && <span className="sd-chip-dot" />}
@@ -219,9 +252,14 @@ export function ShopsDirectoryClient({ shops }: Props) {
       </div>
 
       {/* Results */}
+      {filter === 'near' && nearLoading ? (
+        <div className="sd-empty" style={{ marginBottom: 16 }}>
+          <div className="sd-empty-sub">Finding nearby shops...</div>
+        </div>
+      ) : null}
       {filtered.length === 0 ? (
         <div className="sd-empty">
-          <span className="sd-empty-icon">🏪</span>
+          <span className="sd-empty-icon"><Store size={18} /></span>
           <div className="sd-empty-title">No shops found</div>
           <div className="sd-empty-sub">Try adjusting your search or filters.</div>
           <button
@@ -235,11 +273,15 @@ export function ShopsDirectoryClient({ shops }: Props) {
         </div>
       ) : view === 'list' ? (
         <div className="shops-list">
-          {filtered.map((shop, i) => <ShopListCard key={shop.id} shop={shop} index={i} />)}
+          {filtered.map((shop, i) => (
+            <ShopListCard key={shop.id} shop={shop} index={i} isAuthenticated={isAuthenticated} currentUserId={currentUserId} />
+          ))}
         </div>
       ) : (
         <div className="sd-grid">
-          {filtered.map((shop, i) => <ShopGridCard key={shop.id} shop={shop} index={i} />)}
+          {filtered.map((shop, i) => (
+            <ShopGridCard key={shop.id} shop={shop} index={i} isAuthenticated={isAuthenticated} currentUserId={currentUserId} />
+          ))}
         </div>
       )}
     </div>

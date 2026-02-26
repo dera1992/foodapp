@@ -2,7 +2,23 @@
 
 import { type ChangeEvent, type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiPaths } from '@/lib/api/endpoints';
+import { CalendarDays, ChevronRight, FileText, ImageIcon, Info, Layers, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  apiPaths,
+  createFoodcreateCategory,
+  createFoodcreateProductImage,
+  createFoodcreateSubCategory,
+  deleteFoodcreateCategory,
+  deleteFoodcreateProductImage,
+  deleteFoodcreateSubCategory,
+  getFoodcreateCategories,
+  getFoodcreateSubCategories,
+  loadFoodcreateSubcategories,
+  lookupFoodcreateProduct,
+  patchFoodcreateCategory,
+  patchFoodcreateSubCategory,
+} from '@/lib/api/endpoints';
 import { cn } from '@/lib/utils/cn';
 import styles from './ProductEditorPage.module.css';
 
@@ -24,6 +40,7 @@ type ProductForm = {
   delivery: DeliveryOption;
   quantity: string;
   available: boolean;
+  existingImages: { id?: string; url: string }[];
   images: File[];
   imagePreviews: string[];
   description: string;
@@ -60,6 +77,7 @@ const INITIAL_FORM: ProductForm = {
   delivery: 'both',
   quantity: '',
   available: true,
+  existingImages: [],
   images: [],
   imagePreviews: [],
   description: ''
@@ -202,21 +220,46 @@ function normalizeTemplates(payload: unknown): ProductTemplate[] {
     .filter((item): item is ProductTemplate => Boolean(item));
 }
 
+function normalizeSubcategoryOptions(payload: unknown): { id: string; name: string }[] {
+  const list = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as { results?: unknown[] }).results)
+      ? (payload as { results: unknown[] }).results
+      : payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown[] }).data)
+        ? (payload as { data: unknown[] }).data
+        : [];
+
+  return list
+    .map((item) => {
+      if (typeof item === 'string') return { id: slugify(item), name: item };
+      if (!item || typeof item !== 'object') return null;
+      const entry = item as Record<string, unknown>;
+      const name = toStringValue(entry.name || entry.title || entry.label || entry.id);
+      if (!name) return null;
+      return { id: toStringValue(entry.id || entry.slug) || slugify(name), name };
+    })
+    .filter((item): item is { id: string; name: string } => Boolean(item));
+}
+
 function mapProductToForm(payload: unknown): ProductForm {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
   const imageCandidates = [
     ...pickArray(record, ['images', 'gallery']),
     record.image
   ];
-  const imagePreviews = imageCandidates
+  const existingImages = imageCandidates
     .map((item) => {
-      if (typeof item === 'string') return item;
+      if (typeof item === 'string') return { url: item };
       if (item && typeof item === 'object') {
-        return pickString(item as Record<string, unknown>, ['url', 'image', 'src']);
+        const rec = item as Record<string, unknown>;
+        const url = pickString(rec, ['url', 'image', 'src']);
+        if (!url) return null;
+        return { id: toStringValue(rec.id), url };
       }
-      return '';
+      return null;
     })
-    .filter(Boolean);
+    .filter((item): item is { id?: string; url: string } => Boolean(item && item.url));
+  const imagePreviews = existingImages.map((img) => img.url);
 
   return {
     ...INITIAL_FORM,
@@ -232,6 +275,7 @@ function mapProductToForm(payload: unknown): ProductForm {
     delivery: (pickString(record, ['delivery', 'delivery_mode', 'delivery_type']) as DeliveryOption) || 'both',
     quantity: pickString(record, ['quantity', 'stock']),
     available: toBoolValue(record.available, true),
+    existingImages,
     images: [],
     imagePreviews,
     description: pickString(record, ['description'])
@@ -282,8 +326,9 @@ function FormField(props: {
   min?: number;
   step?: number;
   options?: Option[];
+  disabled?: boolean;
 }) {
-  const { label, name, value, onChange, placeholder, required, hint, type = 'text', min, step, options = [] } = props;
+  const { label, name, value, onChange, placeholder, required, hint, type = 'text', min, step, options = [], disabled } = props;
   return (
     <div className={styles.field}>
       <label htmlFor={name} className={styles.label}>
@@ -291,7 +336,14 @@ function FormField(props: {
         {hint ? <span className={styles.hint}> ({hint})</span> : null}
       </label>
       {type === 'select' ? (
-        <select id={name} name={name} value={value} onChange={(e) => onChange(e.target.value)} className={styles.select}>
+        <select
+          id={name}
+          name={name}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={styles.select}
+          disabled={disabled}
+        >
           <option value="">Select</option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -310,6 +362,7 @@ function FormField(props: {
           min={min}
           step={step}
           className={styles.input}
+          disabled={disabled}
         />
       )}
     </div>
@@ -332,11 +385,14 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (value: boo
 }
 
 function ImageUploader(props: {
+  existingImages: { id?: string; url: string }[];
   previews: string[];
   images: File[];
   onChange: (files: File[], previews: string[]) => void;
+  onDeleteExistingImage?: (image: { id?: string; url: string }, index: number) => Promise<void>;
+  deletingExistingImageId?: string | null;
 }) {
-  const { previews, images, onChange } = props;
+  const { existingImages, previews, images, onChange, onDeleteExistingImage, deletingExistingImageId } = props;
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -353,16 +409,24 @@ function ImageUploader(props: {
         })
     );
     const nextPreviews = await Promise.all(previewPromises);
-    onChange([...images, ...incoming], [...previews, ...nextPreviews]);
+    const localPreviews = previews.slice(existingImages.length);
+    onChange([...images, ...incoming], [...existingImages.map((img) => img.url), ...localPreviews, ...nextPreviews]);
   };
 
-  const removeImage = (index: number) => {
-    const existingPreviewCount = Math.max(0, previews.length - images.length);
+  const removeImage = async (index: number) => {
+    const existingPreviewCount = existingImages.length;
+    if (index < existingPreviewCount) {
+      const existing = existingImages[index];
+      if (!existing || !onDeleteExistingImage) return;
+      await onDeleteExistingImage(existing, index);
+      return;
+    }
     const imageIndex = index - existingPreviewCount;
-    onChange(
-      images.filter((_, i) => i !== imageIndex),
-      previews.filter((_, i) => i !== index)
-    );
+    const localPreviews = previews.slice(existingPreviewCount);
+    onChange(images.filter((_, i) => i !== imageIndex), [
+      ...existingImages.map((img) => img.url),
+      ...localPreviews.filter((_, i) => i !== imageIndex),
+    ]);
   };
 
   const onInputChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -397,7 +461,7 @@ function ImageUploader(props: {
         tabIndex={0}
         aria-label="Upload product images"
       >
-        <div className={styles.uploadIcon} aria-hidden="true">🖼️</div>
+        <div className={styles.uploadIcon} aria-hidden="true"><ImageIcon size={28} /></div>
         <p className={styles.uploadTitle}>Drag &amp; drop images here or click to browse</p>
         <span className={styles.uploadSub}>PNG, JPG, WEBP - max 5MB each. First image = cover photo.</span>
         <input
@@ -413,15 +477,25 @@ function ImageUploader(props: {
 
       {previews.length ? (
         <div className={styles.previewGrid}>
-          {previews.map((src, index) => (
-            <div className={styles.previewItem} key={`${src.slice(0, 24)}-${index}`}>
-              <img src={src} alt={`Product preview ${index + 1}`} className={styles.previewImage} />
-              {index === 0 ? <div className={styles.coverBadge}>COVER</div> : null}
-              <button type="button" className={styles.removeImageBtn} onClick={() => removeImage(index)} aria-label={`Remove image ${index + 1}`}>
-                ×
-              </button>
-            </div>
-          ))}
+          {previews.map((src, index) => {
+            const existingImage = index < existingImages.length ? existingImages[index] : undefined;
+            const deletingThisExisting = Boolean(existingImage?.id && deletingExistingImageId === existingImage.id);
+            return (
+              <div className={styles.previewItem} key={`${src.slice(0, 24)}-${index}`}>
+                <img src={src} alt={`Product preview ${index + 1}`} className={styles.previewImage} />
+                {index === 0 ? <div className={styles.coverBadge}>COVER</div> : null}
+                <button
+                  type="button"
+                  className={styles.removeImageBtn}
+                  onClick={() => void removeImage(index)}
+                  aria-label={`Remove image ${index + 1}`}
+                  disabled={deletingThisExisting}
+                >
+                  {deletingThisExisting ? '...' : 'x'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -438,6 +512,17 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
   const [error, setError] = useState('');
   const [categories, setCategories] = useState<Category[]>(FALLBACK_CATEGORIES);
   const [templates, setTemplates] = useState<ProductTemplate[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newSubcategoryName, setNewSubcategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [creatingSubcategory, setCreatingSubcategory] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingSubcategoryId, setEditingSubcategoryId] = useState<string | null>(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [deletingSubcategoryId, setDeletingSubcategoryId] = useState<string | null>(null);
+  const [deletingExistingImageId, setDeletingExistingImageId] = useState<string | null>(null);
+  const [uploadingGalleryImages, setUploadingGalleryImages] = useState(false);
+  const [taxonomyError, setTaxonomyError] = useState('');
 
   const update = (patch: Partial<ProductForm>) => setForm((current) => ({ ...current, ...patch }));
 
@@ -451,6 +536,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
   );
 
   const isValid = form.title.trim() !== '' && form.category !== '' && form.price !== '';
+  const canCreateSubcategory = form.category.trim() !== '';
 
   const discountPct = useMemo(() => {
     const original = Number.parseFloat(form.price);
@@ -475,9 +561,10 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       setBootLoading(true);
       setError('');
       try {
-        const [categoriesResult, templatesResult, productResult] = await Promise.allSettled([
-          tryFetchJson(['/api/categories/']),
-          tryFetchJson(['/api/products/templates/']),
+        const [categoriesResult, templatesResult, subcategoriesResult, productResult] = await Promise.allSettled([
+          getFoodcreateCategories(),
+          lookupFoodcreateProduct(),
+          getFoodcreateSubCategories(),
           isEditMode && productId
             ? tryFetchJson([`/api/products/${productId}/`, backendUrl(`${apiPaths.adminProducts}${productId}/`)])
             : Promise.resolve(null)
@@ -486,7 +573,16 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
         if (cancelled) return;
 
         if (categoriesResult.status === 'fulfilled') {
-          setCategories(normalizeCategories(categoriesResult.value));
+          let normalizedCategories = normalizeCategories(categoriesResult.value.data);
+          if (subcategoriesResult.status === 'fulfilled') {
+            const subs = normalizeSubcategoryOptions(subcategoriesResult.value.data);
+            if (subs.length) {
+              normalizedCategories = normalizedCategories.map((category) =>
+                category.subcategories.length ? category : { ...category, subcategories: subs }
+              );
+            }
+          }
+          setCategories(normalizedCategories);
         }
 
         if (templatesResult.status === 'fulfilled') {
@@ -511,6 +607,32 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
     };
   }, [isEditMode, productId]);
 
+  useEffect(() => {
+    if (!form.category) return;
+    let cancelled = false;
+
+    const loadSubs = async () => {
+      try {
+        const payload = await loadFoodcreateSubcategories(form.category);
+        if (cancelled) return;
+        const subs = normalizeSubcategoryOptions(payload);
+        if (!subs.length) return;
+        setCategories((current) =>
+          current.map((category) =>
+            category.id === form.category ? { ...category, subcategories: subs } : category
+          )
+        );
+      } catch {
+        // Keep current options if the endpoint is unavailable or rejects this category.
+      }
+    };
+
+    void loadSubs();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.category]);
+
   const applyTemplate = () => {
     const template = templates.find((item) => item.id === form.templateId);
     if (!template) return;
@@ -527,7 +649,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
     update({ templateId });
     if (!templateId) return;
     try {
-      const payload = await tryFetchJson([`/api/products/templates/${templateId}/`]);
+      const payload = await lookupFoodcreateProduct({ id: templateId });
       const mapped = normalizeTemplates(Array.isArray(payload) ? payload : [payload])[0];
       if (mapped) {
         setTemplates((current) => {
@@ -537,6 +659,293 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       }
     } catch {
       // Template details endpoint is optional; manual apply still works from list data.
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setTaxonomyError('');
+    setCreatingCategory(true);
+    try {
+      let created: unknown;
+      const attempts: Record<string, unknown>[] = [{ name }, { title: name }, { category_name: name }];
+      let lastError: unknown;
+      for (const payload of attempts) {
+        try {
+          created = await createFoodcreateCategory(payload);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!created) throw (lastError ?? new Error('Create category failed'));
+
+      const record = created && typeof created === 'object' ? (created as Record<string, unknown>) : {};
+      const createdName = toStringValue(record.name || record.title || name) || name;
+      const createdId = toStringValue(record.id || record.slug || createdName) || slugify(createdName);
+      const nextCategory: Category = { id: createdId, name: createdName, subcategories: [] };
+
+      setCategories((current) => {
+        const deduped = current.filter((c) => String(c.id) !== String(nextCategory.id));
+        return [nextCategory, ...deduped];
+      });
+      update({ category: createdId, subcategory: '' });
+      setNewCategoryName('');
+      toast.success(`Category "${createdName}" created.`);
+    } catch {
+      setTaxonomyError('Unable to create category right now.');
+      toast.error('Unable to create category right now.');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const handleCreateSubcategory = async () => {
+    const name = newSubcategoryName.trim();
+    if (!name || !form.category) return;
+    setTaxonomyError('');
+    setCreatingSubcategory(true);
+    try {
+      let created: unknown;
+      const attempts: Record<string, unknown>[] = [
+        { name, category: form.category },
+        { name, category_id: form.category },
+        { title: name, category: form.category },
+        { name, parent: form.category },
+      ];
+      let lastError: unknown;
+      for (const payload of attempts) {
+        try {
+          created = await createFoodcreateSubCategory(payload);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!created) throw (lastError ?? new Error('Create subcategory failed'));
+
+      const record = created && typeof created === 'object' ? (created as Record<string, unknown>) : {};
+      const createdName = toStringValue(record.name || record.title || name) || name;
+      const createdId = toStringValue(record.id || record.slug || createdName) || slugify(createdName);
+      const nextSub = { id: createdId, name: createdName };
+
+      setCategories((current) =>
+        current.map((category) =>
+          category.id === form.category
+            ? {
+                ...category,
+                subcategories: [
+                  nextSub,
+                  ...category.subcategories.filter((sub) => String(sub.id) !== String(nextSub.id)),
+                ],
+              }
+            : category
+        )
+      );
+      update({ subcategory: createdId });
+      setNewSubcategoryName('');
+      toast.success(`Subcategory "${createdName}" created.`);
+    } catch {
+      setTaxonomyError('Unable to create subcategory right now.');
+      toast.error('Unable to create subcategory right now.');
+    } finally {
+      setCreatingSubcategory(false);
+    }
+  };
+
+  const handleRenameCategory = async (category: Category) => {
+    const nextName = window.prompt('Rename category', category.name)?.trim();
+    if (!nextName || nextName === category.name) return;
+    setTaxonomyError('');
+    setEditingCategoryId(category.id);
+    try {
+      let updated: unknown;
+      const attempts: Record<string, unknown>[] = [{ name: nextName }, { title: nextName }];
+      let lastError: unknown;
+      for (const payload of attempts) {
+        try {
+          updated = await patchFoodcreateCategory(category.id, payload);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!updated) throw (lastError ?? new Error('Rename category failed'));
+      const record = updated as Record<string, unknown>;
+      const resolvedName = toStringValue(record.name || record.title) || nextName;
+      setCategories((current) =>
+        current.map((c) => (c.id === category.id ? { ...c, name: resolvedName } : c))
+      );
+      toast.success(`Category renamed to "${resolvedName}".`);
+    } catch {
+      setTaxonomyError('Unable to rename category right now.');
+      toast.error('Unable to rename category right now.');
+    } finally {
+      setEditingCategoryId(null);
+    }
+  };
+
+  const handleDeleteCategory = async (category: Category) => {
+    if (!window.confirm(`Delete category "${category.name}"?`)) return;
+    setTaxonomyError('');
+    setDeletingCategoryId(category.id);
+    try {
+      await deleteFoodcreateCategory(category.id);
+      setCategories((current) => current.filter((c) => c.id !== category.id));
+      if (form.category === category.id) update({ category: '', subcategory: '' });
+      toast.success(`Category "${category.name}" deleted.`);
+    } catch {
+      setTaxonomyError('Unable to delete category right now.');
+      toast.error('Unable to delete category right now.');
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  };
+
+  const handleRenameSubcategory = async (subcategoryId: string, subcategoryName: string) => {
+    const nextName = window.prompt('Rename subcategory', subcategoryName)?.trim();
+    if (!nextName || nextName === subcategoryName) return;
+    setTaxonomyError('');
+    setEditingSubcategoryId(subcategoryId);
+    try {
+      let updated: unknown;
+      const attempts: Record<string, unknown>[] = [{ name: nextName }, { title: nextName }];
+      let lastError: unknown;
+      for (const payload of attempts) {
+        try {
+          updated = await patchFoodcreateSubCategory(subcategoryId, payload);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!updated) throw (lastError ?? new Error('Rename subcategory failed'));
+      const record = updated as Record<string, unknown>;
+      const resolvedName = toStringValue(record.name || record.title) || nextName;
+      setCategories((current) =>
+        current.map((category) => ({
+          ...category,
+          subcategories: category.subcategories.map((sub) =>
+            sub.id === subcategoryId ? { ...sub, name: resolvedName } : sub
+          ),
+        }))
+      );
+      toast.success(`Subcategory renamed to "${resolvedName}".`);
+    } catch {
+      setTaxonomyError('Unable to rename subcategory right now.');
+      toast.error('Unable to rename subcategory right now.');
+    } finally {
+      setEditingSubcategoryId(null);
+    }
+  };
+
+  const handleDeleteSubcategory = async (subcategoryId: string, subcategoryName: string) => {
+    if (!window.confirm(`Delete subcategory "${subcategoryName}"?`)) return;
+    setTaxonomyError('');
+    setDeletingSubcategoryId(subcategoryId);
+    try {
+      await deleteFoodcreateSubCategory(subcategoryId);
+      setCategories((current) =>
+        current.map((category) => ({
+          ...category,
+          subcategories: category.subcategories.filter((sub) => sub.id !== subcategoryId),
+        }))
+      );
+      if (form.subcategory === subcategoryId) update({ subcategory: '' });
+      toast.success(`Subcategory "${subcategoryName}" deleted.`);
+    } catch {
+      setTaxonomyError('Unable to delete subcategory right now.');
+      toast.error('Unable to delete subcategory right now.');
+    } finally {
+      setDeletingSubcategoryId(null);
+    }
+  };
+
+  const handleDeleteExistingImage = async (image: { id?: string; url: string }, index: number) => {
+    if (!image.id) {
+      update({
+        existingImages: form.existingImages.filter((_, i) => i !== index),
+        imagePreviews: form.imagePreviews.filter((_, i) => i !== index),
+      });
+      return;
+    }
+
+    setError('');
+    setDeletingExistingImageId(image.id);
+    try {
+      await deleteFoodcreateProductImage(image.id);
+      update({
+        existingImages: form.existingImages.filter((_, i) => i !== index),
+        imagePreviews: form.imagePreviews.filter((_, i) => i !== index),
+      });
+      toast.success('Image removed.');
+    } catch {
+      setError('Unable to delete image right now.');
+      toast.error('Unable to delete image right now.');
+    } finally {
+      setDeletingExistingImageId(null);
+    }
+  };
+
+  const handleUploadGalleryImages = async () => {
+    if (!isEditMode || !productId || form.images.length === 0) return;
+    setError('');
+    setUploadingGalleryImages(true);
+    try {
+      const createdImages: { id?: string; url: string }[] = [];
+
+      for (const file of form.images) {
+        let responsePayload: unknown;
+        let lastError: unknown;
+        const buildAttempts = () => {
+          const fd1 = new FormData();
+          fd1.append('product', productId);
+          fd1.append('image', file);
+          const fd2 = new FormData();
+          fd2.append('product_id', productId);
+          fd2.append('image', file);
+          const fd3 = new FormData();
+          fd3.append('product', productId);
+          fd3.append('images', file);
+          return [fd1, fd2, fd3];
+        };
+
+        for (const fd of buildAttempts()) {
+          try {
+            responsePayload = await createFoodcreateProductImage(fd);
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        if (!responsePayload) throw (lastError ?? new Error('Image upload failed'));
+
+        const item =
+          Array.isArray(responsePayload) ? responsePayload[0]
+            : responsePayload && typeof responsePayload === 'object' && Array.isArray((responsePayload as { results?: unknown[] }).results)
+              ? (responsePayload as { results: unknown[] }).results[0]
+              : responsePayload;
+        const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+        const url = pickString(record, ['url', 'image', 'src']);
+        if (url) createdImages.push({ id: toStringValue(record.id), url });
+      }
+
+      if (createdImages.length) {
+        const nextExisting = [...form.existingImages, ...createdImages];
+        update({
+          existingImages: nextExisting,
+          images: [],
+          imagePreviews: nextExisting.map((img) => img.url),
+        });
+        toast.success(`${createdImages.length} image${createdImages.length === 1 ? '' : 's'} uploaded to gallery.`);
+      }
+    } catch {
+      setError('Unable to upload images to gallery right now.');
+      toast.error('Unable to upload images to gallery right now.');
+    } finally {
+      setUploadingGalleryImages(false);
     }
   };
 
@@ -620,9 +1029,9 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
         <div>
           <div className={styles.breadcrumb}>
             <span>Home</span>
-            <span className={styles.crumbSep}>›</span>
+            <ChevronRight className={styles.crumbSepIcon} />
             <span>Products</span>
-            <span className={styles.crumbSep}>›</span>
+            <ChevronRight className={styles.crumbSepIcon} />
             <span className={styles.currentCrumb}>{isEditMode ? 'Edit Product' : 'Add Product'}</span>
           </div>
           <h1 className={styles.pageTitle}>Add / Edit Product</h1>
@@ -640,7 +1049,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
         {error ? <div className={styles.errorBanner}>{error}</div> : null}
         {bootLoading ? <div className={styles.loadingCard}>Loading product form...</div> : null}
 
-        <SectionCard icon="📋" title="Use a Template">
+        <SectionCard icon={<Layers size={16} />} title="Use a Template">
           <div className={styles.templateRow}>
             <label htmlFor="template" className={styles.templateLabel}>Select a product template</label>
             <select
@@ -663,7 +1072,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
           </div>
         </SectionCard>
 
-        <SectionCard icon="📝" title="General Information">
+        <SectionCard icon={<Info size={16} />} title="General Information">
           <FormField
             label="Product Title"
             name="title"
@@ -673,26 +1082,141 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
             placeholder="e.g. Wholemeal Bread Loaf"
           />
 
-          <div className={styles.grid2}>
-            <FormField
-              label="Category"
-              name="category"
-              required
-              type="select"
-              value={form.category}
-              onChange={(value) => update({ category: value, subcategory: '' })}
-              options={categories.map((category) => ({ value: category.id, label: category.name }))}
-            />
+	          <div className={styles.grid2}>
+	            <div>
+	              <FormField
+	                label="Category"
+	                name="category"
+	                required
+	                type="select"
+	                value={form.category}
+	                onChange={(value) => {
+	                  setTaxonomyError('');
+	                  update({ category: value, subcategory: '' });
+	                }}
+	                options={categories.map((category) => ({ value: category.id, label: category.name }))}
+	              />
+	              <div className={styles.inlineManageRow}>
+	                <input
+	                  type="text"
+	                  value={newCategoryName}
+	                  onChange={(e) => setNewCategoryName(e.target.value)}
+	                  placeholder="Add category"
+	                  className={styles.inlineManageInput}
+	                />
+	                <button
+	                  type="button"
+	                  className={styles.inlineManageButton}
+	                  onClick={() => void handleCreateCategory()}
+	                  disabled={creatingCategory || !newCategoryName.trim()}
+	                >
+	                  {creatingCategory ? 'Adding...' : 'Add'}
+	                </button>
+	              </div>
+	              <div className={styles.taxonomyList}>
+	                {categories.map((category) => {
+	                  const selected = category.id === form.category;
+	                  const busy = editingCategoryId === category.id || deletingCategoryId === category.id;
+	                  return (
+	                    <div key={category.id} className={`${styles.taxonomyChip}${selected ? ` ${styles.taxonomyChipSelected}` : ''}`}>
+	                      <button
+	                        type="button"
+	                        className={styles.taxonomyChipLabel}
+	                        onClick={() => update({ category: category.id, subcategory: '' })}
+	                      >
+	                        {category.name}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.taxonomyChipAction}
+	                        onClick={() => void handleRenameCategory(category)}
+	                        disabled={busy}
+	                      >
+	                        {editingCategoryId === category.id ? '...' : 'Edit'}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={`${styles.taxonomyChipAction} ${styles.taxonomyChipDelete}`}
+	                        onClick={() => void handleDeleteCategory(category)}
+	                        disabled={busy}
+	                      >
+	                        {deletingCategoryId === category.id ? '...' : 'Del'}
+	                      </button>
+	                    </div>
+	                  );
+	                })}
+	              </div>
+	            </div>
 
-            <FormField
-              label="Subcategory"
-              name="subcategory"
-              type="select"
-              value={form.subcategory}
-              onChange={(value) => update({ subcategory: value })}
-              options={currentSubcategories}
-            />
-          </div>
+	            <div>
+	              <FormField
+	                label="Subcategory"
+	                name="subcategory"
+	                type="select"
+	                value={form.subcategory}
+	                onChange={(value) => update({ subcategory: value })}
+	                options={currentSubcategories}
+	                disabled={!form.category}
+	                hint={!form.category ? 'select category first' : undefined}
+	              />
+	              <div className={styles.inlineManageRow}>
+	                <input
+	                  type="text"
+	                  value={newSubcategoryName}
+	                  onChange={(e) => setNewSubcategoryName(e.target.value)}
+	                  placeholder={form.category ? 'Add subcategory' : 'Select category first'}
+	                  className={styles.inlineManageInput}
+	                  disabled={!canCreateSubcategory}
+	                />
+	                <button
+	                  type="button"
+	                  className={styles.inlineManageButton}
+	                  onClick={() => void handleCreateSubcategory()}
+	                  disabled={creatingSubcategory || !canCreateSubcategory || !newSubcategoryName.trim()}
+	                >
+	                  {creatingSubcategory ? 'Adding...' : 'Add'}
+	                </button>
+	              </div>
+	              <div className={styles.taxonomyList}>
+	                {currentSubcategories.map((subcategory) => {
+	                  const busy =
+	                    editingSubcategoryId === subcategory.value || deletingSubcategoryId === subcategory.value;
+	                  const selected = subcategory.value === form.subcategory;
+	                  return (
+	                    <div key={subcategory.value} className={`${styles.taxonomyChip}${selected ? ` ${styles.taxonomyChipSelected}` : ''}`}>
+	                      <button
+	                        type="button"
+	                        className={styles.taxonomyChipLabel}
+	                        onClick={() => update({ subcategory: subcategory.value })}
+	                      >
+	                        {subcategory.label}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.taxonomyChipAction}
+	                        onClick={() => void handleRenameSubcategory(subcategory.value, subcategory.label)}
+	                        disabled={busy}
+	                      >
+	                        {editingSubcategoryId === subcategory.value ? '...' : 'Edit'}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={`${styles.taxonomyChipAction} ${styles.taxonomyChipDelete}`}
+	                        onClick={() => void handleDeleteSubcategory(subcategory.value, subcategory.label)}
+	                        disabled={busy}
+	                      >
+	                        {deletingSubcategoryId === subcategory.value ? '...' : 'Del'}
+	                      </button>
+	                    </div>
+	                  );
+	                })}
+	                {form.category && currentSubcategories.length === 0 ? (
+	                  <div className={styles.taxonomyEmpty}>No subcategories yet for this category.</div>
+	                ) : null}
+	              </div>
+	            </div>
+	          </div>
+	          {taxonomyError ? <div className={styles.taxonomyError}>{taxonomyError}</div> : null}
 
           <FormField
             label="Barcode"
@@ -704,14 +1228,14 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
           />
         </SectionCard>
 
-        <SectionCard icon="💰" title="Pricing">
+        <SectionCard icon={<Wallet size={16} />} title="Pricing">
           <div className={styles.grid2}>
             <div className={styles.field}>
               <label htmlFor="price" className={styles.label}>
                 Original Price <span className={styles.required}>*</span>
               </label>
               <div className={styles.priceWrap}>
-                <span className={styles.pricePrefix}>£</span>
+                <span className={styles.pricePrefix}>GBP</span>
                 <input
                   id="price"
                   name="price"
@@ -729,7 +1253,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
             <div className={styles.field}>
               <label htmlFor="discount_price" className={styles.label}>Discount / Sale Price</label>
               <div className={styles.priceWrap}>
-                <span className={styles.pricePrefix}>£</span>
+                <span className={styles.pricePrefix}>GBP</span>
                 <input
                   id="discount_price"
                   name="discount_price"
@@ -753,13 +1277,13 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
           ) : null}
 
           <div className={styles.currencyNote}>
-            <span className={styles.currencyPill}>£ GBP</span>
+            <span className={styles.currencyPill}>GBP</span>
             <span>Unit:</span>
             <span className={styles.currencyPill}>kg / each</span>
           </div>
         </SectionCard>
 
-        <SectionCard icon="📅" title="Expiry & Status">
+        <SectionCard icon={<CalendarDays size={16} />} title="Expiry & Status">
           <div className={styles.grid3}>
             <div className={styles.field}>
               <label htmlFor="expiry_date" className={styles.label}>
@@ -844,15 +1368,39 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
           </div>
         </SectionCard>
 
-        <SectionCard icon="🖼️" title="Product Images">
+        <SectionCard icon={<ImageIcon size={16} />} title="Product Images">
+          <div className={styles.imageStatusRow}>
+            <span className={styles.imageStatusBadge}>Uploaded {form.existingImages.length}</span>
+            <span className={`${styles.imageStatusBadge} ${form.images.length ? styles.imageStatusBadgePending : ''}`}>
+              Unsaved images {form.images.length}
+            </span>
+          </div>
           <ImageUploader
+            existingImages={form.existingImages}
             images={form.images}
             previews={form.imagePreviews}
             onChange={(images, imagePreviews) => update({ images, imagePreviews })}
+            onDeleteExistingImage={handleDeleteExistingImage}
+            deletingExistingImageId={deletingExistingImageId}
           />
+          {isEditMode ? (
+            <div className={styles.imageActionsRow}>
+              <button
+                type="button"
+                className={styles.outlineButton}
+                onClick={() => void handleUploadGalleryImages()}
+                disabled={uploadingGalleryImages || form.images.length === 0}
+              >
+                {uploadingGalleryImages ? 'Uploading...' : `Upload selected images now${form.images.length ? ` (${form.images.length})` : ''}`}
+              </button>
+              <span className={styles.galleryHint}>
+                Upload selected files to gallery now (image endpoint), or save product to submit them together.
+              </span>
+            </div>
+          ) : null}
         </SectionCard>
 
-        <SectionCard icon="📄" title="Description">
+        <SectionCard icon={<FileText size={16} />} title="Description">
           <div className={styles.fieldNoMargin}>
             <label htmlFor="description" className={styles.label}>
               Product Description <span className={styles.hint}>(optional but recommended)</span>

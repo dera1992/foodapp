@@ -96,8 +96,6 @@ function buildDispatcherPayload(draft: ProfileForm): Partial<DispatcherProfile> 
   return {
     full_name: draft.displayName || undefined,
     phone: draft.phone || undefined,
-    city: draft.city || undefined,
-    address: draft.address || undefined,
     vehicle_type: draft.dispatcherVehicle || undefined,
     plate_number: draft.dispatcherPlate || undefined,
     service_area: draft.dispatcherServiceArea || undefined,

@@ -452,6 +452,29 @@ class DispatcherVehicleSetupAPIView(AccountAPIView):
             save_kwargs={"user": request.user},
         )
         self._update_user_role(request.user, "dispatcher")
+
+        # Notify all admins that a new dispatcher has registered
+        admin_emails = list(
+            User.objects.filter(is_staff=True, is_superuser=True)
+            .exclude(email="")
+            .values_list("email", flat=True)
+        )
+        if admin_emails:
+            from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@bunchfood.com")
+            backend_url = getattr(settings, "BACKEND_URL", "http://localhost:8000")
+            admin_url = f"{backend_url}/admin/account/dispatcherprofile/{profile.id}/change/"
+            admin_html = get_template("registration/dispatcher_registered_admin.html").render(
+                {"profile": profile, "user": request.user, "admin_url": admin_url}
+            )
+            admin_msg = EmailMessage(
+                f"New dispatcher registered – {profile.full_name or request.user.email}",
+                admin_html,
+                from_email,
+                admin_emails,
+            )
+            admin_msg.content_subtype = "html"
+            admin_msg.send(fail_silently=True)
+
         return Response(serializer.data)
 
 

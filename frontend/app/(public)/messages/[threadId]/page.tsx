@@ -1,9 +1,8 @@
 import { Container } from '@/components/layout/Container';
 import { ChatHeader } from '@/components/chat/ChatHeader';
-import { MessageBubble } from '@/components/chat/MessageBubble';
-import { ReplyComposer } from '@/components/chat/ReplyComposer';
+import { ThreadConversationClient } from '@/components/chat/ThreadConversationClient';
 import { Card } from '@/components/ui/Card';
-import { getThread } from '@/lib/api/endpoints';
+import { getShopProducts, getThread } from '@/lib/api/endpoints';
 
 export default async function ThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
   const { threadId } = await params;
@@ -19,15 +18,23 @@ export default async function ThreadPage({ params }: { params: Promise<{ threadI
     );
   }
 
+  const effectiveThreadId = payload.thread.id || threadId;
+  const compositeShopId =
+    payload.thread.shopId ??
+    (effectiveThreadId.includes(':') ? effectiveThreadId.split(':')[0] : undefined);
+  const shouldLoadProducts = Boolean(compositeShopId && /^\d+$/.test(compositeShopId));
+  const productsResult = shouldLoadProducts
+    ? await getShopProducts(String(compositeShopId)).catch(() => ({ data: [] }))
+    : { data: [] };
+
   return (
     <Container className="space-y-4 py-10">
       <ChatHeader thread={payload.thread} />
-      <div className="space-y-3 rounded-2xl border border-brand-border bg-white p-4">
-        {payload.messages.map((message) => (
-          <MessageBubble key={message.id} body={message.body} isMine={message.isMine} createdAt={message.createdAt} />
-        ))}
-      </div>
-      <ReplyComposer />
+      <ThreadConversationClient
+        threadId={effectiveThreadId}
+        initialMessages={payload.messages}
+        products={productsResult.data.map((product) => ({ id: product.id, name: product.name }))}
+      />
     </Container>
   );
 }

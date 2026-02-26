@@ -7,6 +7,7 @@
 
 export type Shop = {
   id: string;
+  ownerUserId?: string;
   slug?: string;
   name: string;
   image?: string | null;
@@ -17,6 +18,8 @@ export type Shop = {
   isOpen?: boolean;
   distanceKm?: number | null;
   rating?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
   productsCount?: number;
   subscriberCount?: number;
   memberSince?: string;
@@ -154,6 +157,8 @@ export type ShopAnalyticsDashboard = {
 
 export type Thread = {
   id: string;
+  shopId?: string;
+  otherUserId?: string;
   title: string;
   lastMessage?: string;
   updatedAt: string;
@@ -165,6 +170,8 @@ export type Message = {
   senderName: string;
   senderId: string;
   body: string;
+  productId?: string;
+  productName?: string;
   createdAt: string;
   isMine?: boolean;
 };
@@ -176,6 +183,7 @@ export type BudgetInsight = {
 
 export type BudgetItem = {
   id: string;
+  productId?: string;
   name: string;
   price: number;
   quantity: number;
@@ -228,6 +236,7 @@ export type DispatcherProfile = {
   vehicle_model?: string;
   service_area?: string;
   availability?: string;
+  status?: 'pending' | 'approved' | 'rejected';
 };
 
 export type ShopFollower = {

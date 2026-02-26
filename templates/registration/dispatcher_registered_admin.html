@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Dispatcher Registered – Bunchfood</title>
+</head>
+<body style="font-family: sans-serif; background: #faf8f3; margin: 0; padding: 32px 16px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+    <tr>
+      <td style="background: #2d7a3a; padding: 28px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700;">Bunchfood</h1>
+        <p style="margin: 6px 0 0; color: #b7ddbf; font-size: 14px;">Admin Notification</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 32px;">
+        <h2 style="margin: 0 0 12px; color: #1a1a1a; font-size: 20px;">A new dispatcher has registered</h2>
+        <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px; line-height: 1.6;">
+          A new dispatcher has completed registration and is awaiting your review and approval.
+        </p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 24px;">
+          <tr>
+            <td style="padding: 20px 24px;">
+              <p style="margin: 0 0 8px; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Dispatcher Details</p>
+              <p style="margin: 0 0 4px; color: #1a1a1a; font-size: 14px;"><strong>Full name:</strong> {{ profile.full_name|default:"Not provided" }}</p>
+              <p style="margin: 0 0 4px; color: #1a1a1a; font-size: 14px;"><strong>Email:</strong> {{ user.email }}</p>
+              <p style="margin: 0 0 4px; color: #1a1a1a; font-size: 14px;"><strong>ID number:</strong> {{ profile.id_number|default:"Not provided" }}</p>
+              <p style="margin: 0 0 4px; color: #1a1a1a; font-size: 14px;"><strong>Vehicle type:</strong> {{ profile.vehicle_type|default:"Not provided" }}</p>
+              <p style="margin: 0; color: #1a1a1a; font-size: 14px;"><strong>Plate number:</strong> {{ profile.plate_number|default:"Not provided" }}</p>
+            </td>
+          </tr>
+        </table>
+        <a href="{{ admin_url }}"
+           style="display: inline-block; background: #2d7a3a; color: #ffffff; text-decoration: none;
+                  padding: 13px 28px; border-radius: 8px; font-size: 15px; font-weight: 600;">
+          Review in Admin Panel
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 20px 32px; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #9ca3af; font-size: 12px;">© Bunchfood · Reducing food waste, one deal at a time.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

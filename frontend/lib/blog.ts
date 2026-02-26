@@ -28,115 +28,42 @@ export type BlogCategory = {
   postCount: number;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api';
+export type BlogCategoryCount = {
+  name: string;
+  slug: string;
+  total: number;
+};
 
-const FALLBACK_POSTS: BlogPost[] = [
-  {
-    id: 1,
-    slug: 'building-to-last',
-    title: 'Building to last',
-    excerpt: 'How bunchfood is building a durable food-rescue platform with reliable tools, clear processes, and local shop partnerships.',
-    content: `
-      <h2>Tools You Can Use</h2>
-      <ul>
-        <li>Collaborative filtering for personalised recommendations</li>
-        <li>Rule-based pricing and freshness alerts in Django</li>
-        <li>Queue-backed background jobs for low-stock updates</li>
-      </ul>
-      <p>Building a marketplace that survives real-world usage takes more than a nice interface. You need predictable operations, clear ownership, and solid fallback paths for every critical flow.</p>
-      <div class="bf-blog-callout"><span class="bf-blog-callout-icon">💡</span><div>Since bunchfood uses Django REST + Next.js, a lightweight recommendation service can be added later without changing the core checkout flow.</div></div>
-      <h2>Build a Recommendation Microservice</h2>
-      <p>Start small. Cache personalised recommendations per user and refresh them on key events like completed orders and wishlist changes.</p>
-      <ul>
-        <li>Expose a single <code>/api/recommendations/</code> endpoint</li>
-        <li>Cache user recommendations in Redis</li>
-        <li>Fallback to top-selling items when no profile exists</li>
-      </ul>
-    `,
-    image: null,
-    emoji: '🌿',
-    category: 'Food',
-    categorySlug: 'food',
-    author: 'Admin',
-    createdAt: '2026-02-23T09:00:00.000Z',
-    readTime: 4,
-    comments: []
-  },
-  {
-    id: 2,
-    slug: '5-ways-to-save-more-on-fresh-deals',
-    title: '5 ways to save more on fresh deals',
-    excerpt: 'Simple habits customers can use to get better value from near-expiry deals without wasting food at home.',
-    content: `
-      <h2>Shop With a Plan</h2>
-      <p>Start with a short list based on meals you can cook in 24 to 48 hours. This prevents overbuying and helps you take advantage of steep discounts responsibly.</p>
-      <h2>Use Filters</h2>
-      <ul>
-        <li>Filter by category to compare similar products quickly</li>
-        <li>Check expiry dates before adding items to cart</li>
-        <li>Prioritize products you can freeze or preserve</li>
-      </ul>
-    `,
-    image: null,
-    emoji: '🛒',
-    category: 'Tips',
-    categorySlug: 'tips',
-    author: 'Bunchfood Team',
-    createdAt: '2026-02-21T14:30:00.000Z',
-    readTime: 3,
-    comments: [
-      { id: 'c1', author: 'Chidera', body: 'This is helpful. A meal plan really reduces waste.', createdAt: '2026-02-22T08:00:00.000Z' }
-    ]
-  },
-  {
-    id: 3,
-    slug: 'how-shops-recover-value-from-surplus',
-    title: 'How shops recover value from surplus inventory',
-    excerpt: 'A practical look at how local shops use bunchfood to reduce waste, move fast inventory, and build repeat customers.',
-    content: `
-      <h2>Why surplus happens</h2>
-      <p>Demand shifts daily. Weather, holidays, and supplier timing can all leave shops with more fresh items than expected.</p>
-      <h2>What works</h2>
-      <ul>
-        <li>Create clear discount bands based on expiry windows</li>
-        <li>Highlight high-turnover products during peak hours</li>
-        <li>Use dispatch support for same-day local deliveries</li>
-      </ul>
-    `,
-    image: null,
-    emoji: '🏪',
-    category: 'Shops',
-    categorySlug: 'shops',
-    author: 'Operations Team',
-    createdAt: '2026-02-19T12:15:00.000Z',
-    readTime: 5,
-    comments: []
-  },
-  {
-    id: 4,
-    slug: 'dispatchers-and-on-time-deliveries',
-    title: 'Dispatchers and on-time deliveries',
-    excerpt: 'How dispatcher onboarding, routing discipline, and communication improve customer trust and repeat orders.',
-    content: `
-      <h2>Consistency beats speed alone</h2>
-      <p>Customers trust delivery windows when dispatchers provide updates and arrive consistently, even if routes are busy.</p>
-      <h2>Dispatcher checklist</h2>
-      <ul>
-        <li>Confirm pickup before leaving the previous drop</li>
-        <li>Review destination and contact details early</li>
-        <li>Mark status updates as the order moves</li>
-      </ul>
-    `,
-    image: null,
-    emoji: '🛵',
-    category: 'Dispatch',
-    categorySlug: 'dispatch',
-    author: 'Logistics Team',
-    createdAt: '2026-02-18T16:40:00.000Z',
-    readTime: 4,
-    comments: []
+export type BlogCategoryApiPayload = {
+  id?: number;
+  title?: string | null;
+  name?: string | null;
+  slug?: string | null;
+  [key: string]: unknown;
+};
+
+export type BlogPostApiPayload = {
+  id?: number;
+  title?: string;
+  slug?: string;
+  content?: string | null;
+  categories?: Array<number | string> | number[];
+  publish?: string;
+  read_time?: number;
+  draft?: boolean;
+  image?: unknown;
+  [key: string]: unknown;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api';
+const API_V1 = `${API_BASE.replace(/\/$/, '')}/v1/blog`;
+const API_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE).origin;
+  } catch {
+    return '';
   }
-];
+})();
 
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -155,6 +82,15 @@ function pickString(record: Record<string, unknown>, keys: string[]): string {
   return '';
 }
 
+function pickNestedString(record: Record<string, unknown>, nestedKeys: string[], keys: string[]): string {
+  for (const nestedKey of nestedKeys) {
+    const nested = toRecord(record[nestedKey]);
+    const value = pickString(nested, keys);
+    if (value) return value;
+  }
+  return '';
+}
+
 function pickNumber(record: Record<string, unknown>, keys: string[]): number {
   for (const key of keys) {
     const value = record[key];
@@ -167,6 +103,75 @@ function pickNumber(record: Record<string, unknown>, keys: string[]): number {
   return 0;
 }
 
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function buildExcerpt(content: string, fallback = 'Read the latest update from bunchfood.'): string {
+  const text = stripHtml(content);
+  if (!text) return fallback;
+  return text.length > 160 ? `${text.slice(0, 157).trimEnd()}...` : text;
+}
+
+function normalizeImageUrl(value: string): string {
+  if (!value) return value;
+  if (/^(https?:)?\/\//i.test(value) || /^data:/i.test(value)) return value;
+  if (!API_ORIGIN) return value;
+  if (value.startsWith('/')) return `${API_ORIGIN}${value}`;
+  return `${API_ORIGIN}/${value}`;
+}
+
+type CategoryLookupValue = {
+  id: number;
+  name: string;
+  slug: string;
+  postCount: number;
+};
+
+function parseCountMap(countsList: unknown[]) {
+  const countMap = new Map<string, number>();
+  for (const item of countsList) {
+    const rec = toRecord(item);
+    const name = pickString(rec, ['name', 'category', 'title', 'categories__title']);
+    const slug = pickString(rec, ['slug']) || (name ? slugify(name) : '');
+    const count = pickNumber(rec, ['postCount', 'post_count', 'count', 'total']);
+    if (slug) countMap.set(slug, count);
+  }
+  return countMap;
+}
+
+function parseCategories(categoriesList: unknown[], countMap?: Map<string, number>) {
+  return categoriesList.map((item, index) => {
+    const record = toRecord(item);
+    const name = pickString(record, ['name', 'category', 'title']) || `Category ${index + 1}`;
+    const slug = pickString(record, ['slug']) || slugify(name);
+    return {
+      id: Number(pickString(record, ['id']) || index + 1),
+      name,
+      slug,
+      postCount: (countMap?.get(slug) ?? pickNumber(record, ['postCount', 'post_count', 'count', 'total'])) || 0
+    } satisfies BlogCategory;
+  });
+}
+
+async function fetchCategoriesPayload() {
+  return tryRequest([v1Path('/categorys/'), '/api/blog/categories/', backendPath('/blog/categories/')]);
+}
+
+async function fetchCategoryCountsPayload() {
+  return tryRequest([v1Path('/category-count/')]);
+}
+
+async function getCategoryLookup() {
+  try {
+    const categoriesPayload = await fetchCategoriesPayload();
+    const categories = parseCategories(normalizeListPayload(categoriesPayload));
+    return new Map<number, CategoryLookupValue>(categories.map((category) => [category.id, category]));
+  } catch {
+    return new Map<number, CategoryLookupValue>();
+  }
+}
+
 function mapComment(raw: unknown, index: number): BlogComment {
   const record = toRecord(raw);
   return {
@@ -177,24 +182,67 @@ function mapComment(raw: unknown, index: number): BlogComment {
   };
 }
 
-function mapPost(raw: unknown, index: number): BlogPost {
+function mapPost(raw: unknown, index: number, categoryLookup?: Map<number, CategoryLookupValue>): BlogPost {
   const record = toRecord(raw);
+  const categoryRecord = toRecord(record.category);
+  const authorRecord = toRecord(record.author);
   const title = pickString(record, ['title', 'name']) || `Blog Post ${index + 1}`;
-  const category = pickString(record, ['category']) || 'General';
   const content = pickString(record, ['content', 'body']) || '<p>Post content is not available yet.</p>';
   const commentsRaw = Array.isArray(record.comments) ? record.comments : [];
+  const categoriesRaw = Array.isArray(record.categories) ? record.categories : [];
+
+  let category = pickString(record, ['category_name']) || pickNestedString(record, ['category'], ['name', 'title']);
+  let categorySlug = pickString(record, ['category_slug']) || pickNestedString(record, ['category'], ['slug']);
+
+  if ((!category || !categorySlug) && categoriesRaw.length) {
+    for (const item of categoriesRaw) {
+      if (typeof item === 'number' || typeof item === 'string') {
+        const numericId = typeof item === 'number' ? item : Number.parseInt(item, 10);
+        if (Number.isFinite(numericId) && categoryLookup?.has(numericId)) {
+          const resolved = categoryLookup.get(numericId)!;
+          category ||= resolved.name;
+          categorySlug ||= resolved.slug;
+          break;
+        }
+        if (typeof item === 'string' && item.trim() && Number.isNaN(Number(item))) {
+          category ||= item.trim();
+          categorySlug ||= slugify(item.trim());
+          break;
+        }
+      }
+      const categoryItem = toRecord(item);
+      const itemName = pickString(categoryItem, ['name', 'title']);
+      const itemSlug = pickString(categoryItem, ['slug']) || (itemName ? slugify(itemName) : '');
+      if (itemName || itemSlug) {
+        category ||= itemName;
+        categorySlug ||= itemSlug;
+        break;
+      }
+    }
+  }
+
+  category ||= pickString(record, ['category']) || 'General';
+  categorySlug ||= slugify(category);
+
   return {
     id: Number(pickString(record, ['id']) || index + 1),
     slug: pickString(record, ['slug']) || slugify(title),
     title,
-    excerpt: pickString(record, ['excerpt', 'summary']) || 'Read the latest update from bunchfood.',
+    excerpt: pickString(record, ['excerpt', 'summary']) || buildExcerpt(content),
     content,
-    image: pickString(record, ['image', 'thumbnail']) || null,
+    image: (() => {
+      const imageValue = pickString(record, ['image', 'thumbnail', 'featured_image']);
+      return imageValue ? normalizeImageUrl(imageValue) : null;
+    })(),
     emoji: pickString(record, ['emoji']) || null,
     category,
-    categorySlug: pickString(record, ['category_slug']) || slugify(category),
-    author: pickString(record, ['author', 'author_name']) || 'Bunchfood Team',
-    createdAt: pickString(record, ['createdAt', 'created_at', 'published_at']) || new Date().toISOString(),
+    categorySlug,
+    author:
+      pickString(record, ['author_name']) ||
+      pickString(authorRecord, ['full_name', 'name', 'username']) ||
+      pickString(record, ['author']) ||
+      'Bunchfood Team',
+    createdAt: pickString(record, ['createdAt', 'created_at', 'published_at', 'timestamp', 'publish']) || new Date().toISOString(),
     readTime: pickNumber(record, ['readTime', 'read_time']) || 3,
     comments: commentsRaw.map(mapComment)
   };
@@ -214,6 +262,51 @@ async function fetchJson(path: string) {
   return response.json();
 }
 
+function getCsrfToken() {
+  if (typeof document === 'undefined') return '';
+  return (
+    document.cookie
+      .split('; ')
+      .find((row) => row.startsWith('csrftoken='))?.split('=')
+      .slice(1)
+      .join('=') ?? ''
+  );
+}
+
+async function requestJson<T = unknown>(
+  url: string,
+  init?: Omit<RequestInit, 'body'> & { body?: BodyInit | Record<string, unknown> | null }
+): Promise<T> {
+  const csrf = getCsrfToken();
+  const body = init?.body;
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const isJsonObject = !!body && typeof body === 'object' && !isFormData && !(body instanceof URLSearchParams);
+
+  const headers = new Headers(init?.headers);
+  if (csrf) headers.set('X-CSRFToken', decodeURIComponent(csrf));
+  if (isJsonObject && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+  const response = await fetch(url, {
+    ...init,
+    credentials: 'include',
+    cache: init?.method && init.method !== 'GET' ? 'no-store' : init?.cache ?? 'no-store',
+    headers,
+    body: isJsonObject ? JSON.stringify(body) : (body as BodyInit | null | undefined),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed (${response.status})`);
+  }
+
+  if (response.status === 204) return null as T;
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    return null as T;
+  }
+  return (await response.json()) as T;
+}
+
 async function tryRequest(paths: string[]) {
   let lastError: unknown;
   for (const path of paths) {
@@ -230,56 +323,154 @@ function backendPath(path: string) {
   return `${API_BASE}${path}`;
 }
 
-export async function getBlogPosts() {
+function v1Path(path: string) {
+  return `${API_V1}${path}`;
+}
+
+function mapCategoryCount(raw: unknown): BlogCategoryCount {
+  const record = toRecord(raw);
+  const name = pickString(record, ['name', 'category', 'title', 'categories__title']) || 'General';
+  return {
+    name,
+    slug: pickString(record, ['slug']) || slugify(name),
+    total: pickNumber(record, ['total', 'count', 'postCount', 'post_count']) || 0
+  };
+}
+
+export async function getBlogPosts(filters?: { category?: string; q?: string }) {
   try {
-    const payload = await tryRequest(['/api/blog/', backendPath('/blog/')]);
-    const list = normalizeListPayload(payload).map(mapPost);
-    return list.length ? list : FALLBACK_POSTS;
+    const params = new URLSearchParams();
+    if (filters?.category) params.set('category', filters.category);
+    if (filters?.q) params.set('search', filters.q);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const [payload, categoryLookup] = await Promise.all([
+      tryRequest([v1Path(`/posts/${qs}`), '/api/blog/', backendPath('/blog/')]),
+      getCategoryLookup()
+    ]);
+    const list = normalizeListPayload(payload).map((item, index) => mapPost(item, index, categoryLookup));
+    return list.filter((post) => {
+      const matchCategory = filters?.category ? post.categorySlug === filters.category : true;
+      const q = filters?.q?.trim().toLowerCase();
+      const matchQuery = q
+        ? [post.title, post.excerpt, post.category, post.author].join(' ').toLowerCase().includes(q)
+        : true;
+      return matchCategory && matchQuery;
+    });
   } catch {
-    return FALLBACK_POSTS;
+    return [];
   }
 }
 
 export async function getBlogPost(slug: string) {
   try {
-    const payload = await tryRequest([`/api/blog/${slug}/`, backendPath(`/blog/${slug}/`)]);
-    return mapPost(payload, 0);
+    const [payload, categoryLookup] = await Promise.all([
+      tryRequest([v1Path(`/posts/by-slug/${slug}/`), `/api/blog/${slug}/`, backendPath(`/blog/${slug}/`)]),
+      getCategoryLookup()
+    ]);
+    return mapPost(payload, 0, categoryLookup);
   } catch {
-    return FALLBACK_POSTS.find((post) => post.slug === slug) ?? null;
+    return null;
   }
 }
 
 export async function getBlogCategories() {
   try {
-    const payload = await tryRequest(['/api/blog/categories/', backendPath('/blog/categories/')]);
-    const list = normalizeListPayload(payload);
-    const categories = list.map((item, index) => {
-      const record = toRecord(item);
-      const name = pickString(record, ['name', 'category']) || `Category ${index + 1}`;
-      return {
-        id: Number(pickString(record, ['id']) || index + 1),
-        name,
-        slug: pickString(record, ['slug']) || slugify(name),
-        postCount: pickNumber(record, ['postCount', 'post_count', 'count']) || 0
-      } satisfies BlogCategory;
-    });
+    const [categoriesPayload, countsPayload] = await Promise.allSettled([
+      fetchCategoriesPayload(),
+      fetchCategoryCountsPayload()
+    ]);
+
+    const categoriesList = categoriesPayload.status === 'fulfilled' ? normalizeListPayload(categoriesPayload.value) : [];
+    const countsList = countsPayload.status === 'fulfilled' ? normalizeListPayload(countsPayload.value) : [];
+    const countMap = parseCountMap(countsList);
+    const categories = parseCategories(categoriesList, countMap);
     if (categories.length) return categories;
   } catch {
-    // fall through to derived categories
+    return [];
   }
 
-  const counts = new Map<string, { name: string; count: number }>();
-  for (const post of FALLBACK_POSTS) {
-    const key = post.categorySlug;
-    const current = counts.get(key);
-    counts.set(key, { name: post.category, count: (current?.count ?? 0) + 1 });
-  }
-  return Array.from(counts.entries()).map(([slug, value], index) => ({
-    id: index + 1,
-    name: value.name,
-    slug,
-    postCount: value.count
-  }));
+  return [];
+}
+
+export async function getBlogCategoryCounts() {
+  const payload = await fetchCategoryCountsPayload();
+  return normalizeListPayload(payload).map(mapCategoryCount);
+}
+
+export async function listBlogCategoriesRaw() {
+  return requestJson<BlogCategoryApiPayload[]>(v1Path('/categorys/'));
+}
+
+export async function createBlogCategory(data: BlogCategoryApiPayload) {
+  return requestJson<BlogCategoryApiPayload>(v1Path('/categorys/'), {
+    method: 'POST',
+    body: data
+  });
+}
+
+export async function getBlogCategoryById(id: number | string) {
+  return requestJson<BlogCategoryApiPayload>(v1Path(`/categorys/${id}/`));
+}
+
+export async function updateBlogCategory(id: number | string, data: BlogCategoryApiPayload) {
+  return requestJson<BlogCategoryApiPayload>(v1Path(`/categorys/${id}/`), {
+    method: 'PUT',
+    body: data
+  });
+}
+
+export async function patchBlogCategory(id: number | string, data: Partial<BlogCategoryApiPayload>) {
+  return requestJson<BlogCategoryApiPayload>(v1Path(`/categorys/${id}/`), {
+    method: 'PATCH',
+    body: data as Record<string, unknown>
+  });
+}
+
+export async function deleteBlogCategory(id: number | string) {
+  await requestJson<null>(v1Path(`/categorys/${id}/`), { method: 'DELETE' });
+  return true;
+}
+
+export async function listBlogPostsRaw() {
+  return requestJson<BlogPostApiPayload[] | { results?: BlogPostApiPayload[] }>(v1Path('/posts/'));
+}
+
+export async function createBlogPost(data: BlogPostApiPayload | FormData) {
+  return requestJson<BlogPostApiPayload>(v1Path('/posts/'), {
+    method: 'POST',
+    body: data as BodyInit | Record<string, unknown>
+  });
+}
+
+export async function getBlogPostById(id: number | string) {
+  const [payload, categoryLookup] = await Promise.all([
+    requestJson<unknown>(v1Path(`/posts/${id}/`)),
+    getCategoryLookup()
+  ]);
+  return mapPost(payload, 0, categoryLookup);
+}
+
+export async function getBlogPostByIdRaw(id: number | string) {
+  return requestJson<BlogPostApiPayload>(v1Path(`/posts/${id}/`));
+}
+
+export async function updateBlogPost(id: number | string, data: BlogPostApiPayload | FormData) {
+  return requestJson<BlogPostApiPayload>(v1Path(`/posts/${id}/`), {
+    method: 'PUT',
+    body: data as BodyInit | Record<string, unknown>
+  });
+}
+
+export async function patchBlogPost(id: number | string, data: Partial<BlogPostApiPayload> | FormData) {
+  return requestJson<BlogPostApiPayload>(v1Path(`/posts/${id}/`), {
+    method: 'PATCH',
+    body: data as BodyInit | Record<string, unknown>
+  });
+}
+
+export async function deleteBlogPost(id: number | string) {
+  await requestJson<null>(v1Path(`/posts/${id}/`), { method: 'DELETE' });
+  return true;
 }
 
 export async function getRecentBlogPosts(limit = 4) {
@@ -311,3 +502,32 @@ export function sanitizeBlogHtml(html: string) {
     .replace(/\son[a-z]+='[^']*'/gi, '');
 }
 
+export async function postBlogCommentBySlug(slug: string, body: string) {
+  const csrf = getCsrfToken();
+
+  const endpoints = [
+    v1Path(`/posts/by-slug/${slug}/comments/`),
+    `${API_BASE.replace(/\/$/, '')}/blog/${slug}/comments/`
+  ];
+
+  let lastError: unknown;
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrf ? { 'X-CSRFToken': decodeURIComponent(csrf) } : {})
+        },
+        credentials: 'include',
+        body: JSON.stringify({ body })
+      });
+      if (res.ok) return true;
+      if (res.status === 404) continue;
+      throw new Error(`Comment submit failed (${res.status})`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error('Comment submit failed');
+}

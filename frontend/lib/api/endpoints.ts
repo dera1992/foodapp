@@ -31,13 +31,36 @@ export const apiPaths = {
   shopByIdFallback: (shopId: string) => `/home/shops/${shopId}/`,
   subscribeShop: (shopId: string) => `/home/shops/${shopId}/subscribe/`,
   products: '/home/ads/',
+  productsAll: '/home/ads/all/',
+  productByIdSlug: (productId: string, slug: string) => `/home/ads/${productId}/${slug}/`,
+  productPreviewByIdSlug: (productId: string, slug: string) => `/home/ads/${productId}/${slug}/preview/`,
+  productToggleFavourite: (productId: string) => `/home/ads/${productId}/toggle-favourite/`,
+  productDeleteLegacy: (productId: string) => `/home/ads/${productId}/delete/`,
   productsFallback: '/foodcreate/productss/',
+  foodcreateCategories: '/foodcreate/categorys/',
+  foodcreateCategoryById: (id: string) => `/foodcreate/categorys/${id}/`,
+  foodcreateProductImages: '/foodcreate/products-imagess/',
+  foodcreateProductImageById: (id: string) => `/foodcreate/products-imagess/${id}/`,
+  foodcreateProducts: '/foodcreate/productss/',
+  foodcreateProductById: (id: string) => `/foodcreate/productss/${id}/`,
+  foodcreateProductDuplicate: (id: string) => `/foodcreate/productss/${id}/duplicate/`,
+  foodcreateProductLoadSubcategories: '/foodcreate/productss/load-subcategories/',
+  foodcreateProductLookup: '/foodcreate/productss/lookup-product/',
+  foodcreateReviewRatings: '/foodcreate/review-ratings/',
+  foodcreateReviewRatingById: (id: string) => `/foodcreate/review-ratings/${id}/`,
+  foodcreateSubCategories: '/foodcreate/sub-categorys/',
+  foodcreateSubCategoryById: (id: string) => `/foodcreate/sub-categorys/${id}/`,
   productById: (productId: string) => `/foodcreate/productss/${productId}/`,
   productByIdFallback: (productId: string) => `/home/ads/${productId}/`,
   submitReview: (postId: string) => `/home/submit-review/${postId}/`,
   cartList: '/cart/',
   cartAdd: '/cart/add/',
+  cartAddToCart: '/cart/add-to-cart/',
+  cartAddToCartAjax: '/cart/add-to-cart-ajax/',
+  cartClear: '/cart/clear/',
   cartRemove: '/cart/remove/',
+  cartRemoveFromCart: '/cart/remove-from-cart/',
+  cartRemoveSingleFromCart: '/cart/remove-single-item-from-cart/',
   cartUpdateQuantity: '/cart/update_quantity/',
   cartOrderSummary: '/cart/order-summary/',
   addCoupon: '/order/add-coupon/',
@@ -45,16 +68,45 @@ export const apiPaths = {
   wishlistFallback: '/wishlist/',
   addWishlist: '/home/products/',
   removeWishlist: (itemId: string) => `/home/wishlist-items/${itemId}/`,
+  removeWishlistByProduct: (productId: string) => `/home/products/${productId}/favourite/`,
+  wishlistItems: '/home/wishlist-items/',
+  wishlistItemById: (id: string) => `/home/wishlist-items/${id}/`,
+  wishlistNotifications: '/home/wishlist-notifications/',
+  wishlistNotificationById: (id: string) => `/home/wishlist-notifications/${id}/`,
+  wishlistPreferences: (itemId: string) => `/home/wishlist/${itemId}/preferences/`,
   customerAnalytics: '/home/analytics/customer/',
+  dispatcherAnalytics: '/home/analytics/dispatcher/',
+  homeDashboard: '/home/dashboard/',
+  homeCategoryCount: '/home/category-count/',
+  nearbyShops: '/home/nearby-shops/',
   budget: '/budget/budgets/',
+  budgetById: (id: string) => `/budget/budgets/${id}/`,
+  budgetAddItem: (id: string) => `/budget/budgets/${id}/add-item/`,
+  budgetDuplicate: (id: string) => `/budget/budgets/${id}/duplicate/`,
+  budgetFromCart: (id: string) => `/budget/budgets/${id}/from-cart/`,
+  budgetRemoveItem: (id: string) => `/budget/budgets/${id}/remove-item/`,
+  budgetUpdateItemQuantity: (id: string) => `/budget/budgets/${id}/update-item-quantity/`,
   budgetItems: '/budget/shopping-list-items/',
   budgetItemById: (id: string) => `/budget/shopping-list-items/${id}/`,
+  budgetTemplateItems: '/budget/budget-template-items/',
+  budgetTemplateItemById: (id: string) => `/budget/budget-template-items/${id}/`,
   budgetTemplates: '/budget/budget-templates/',
+  budgetTemplateById: (id: string) => `/budget/budget-templates/${id}/`,
+  budgetTemplateAddItem: (id: string) => `/budget/budget-templates/${id}/add-item/`,
+  budgetTemplateApply: (id: string) => `/budget/budget-templates/${id}/apply/`,
+  budgetTemplateRemoveItem: (id: string) => `/budget/budget-templates/${id}/remove-item/`,
   budgetInsights: '/budget/insights/',
   budgetSaved: '/budget/saved/',
   threads: '/chat/inbox/',
+  chatMessages: '/chat/messages/',
+  chatMessageById: (id: string) => `/chat/messages/${id}/`,
+  chatSend: '/chat/send/',
+  chatThreadByParticipants: (shopId: string, userId: string) => `/chat/thread/${shopId}/${userId}/`,
+  chatThreadMessagesByParticipants: (shopId: string, userId: string) => `/chat/thread/${shopId}/${userId}/messages/`,
   threadById: (threadId: string) => `/chat/threads/${threadId}/`,
   sendReply: (threadId: string) => `/chat/threads/${threadId}/messages/`,
+  comments: '/comments/comments/',
+  commentById: (id: string) => `/comments/comments/${id}/`,
   adminAnalytics: '/home/analytics/shop/',
   adminProducts: '/foodcreate/productss/',
   adminOrders: '/order/orders/',
@@ -63,6 +115,7 @@ export const apiPaths = {
   orderTracking: '/order/tracking/',
   createProduct: '/foodcreate/productss/',
   shopNotifications: '/account/shop-notifications/',
+  homeShopNotifications: '/home/shop-notifications/',
   shopNotificationById: (id: string) => `/account/shop-notifications/${id}/`,
   shopSubscriptions: '/account/shop-subscriptions/',
   shopSubscriptionById: (id: string) => `/account/shop-subscriptions/${id}/`,
@@ -107,22 +160,34 @@ function slugify(value: string): string {
 function toShop(raw: unknown): Shop {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const id = String(record.id ?? record.shop_id ?? '');
+  const ownerRecord = record.owner && typeof record.owner === 'object' ? (record.owner as Record<string, unknown>) : null;
   const name = pickString(record, ['shop_name', 'name', 'title']) ?? 'Local shop';
   const cats = pickArray(record, ['categories'])
     .map((c) => (typeof c === 'string' ? c : pickString(c as Record<string, unknown>, ['name']) ?? ''))
     .filter(Boolean) as string[];
   return {
     id,
+    ownerUserId: record.owner_id != null
+      ? String(record.owner_id)
+      : record.owner != null && typeof record.owner !== 'object'
+        ? String(record.owner)
+        : ownerRecord?.id != null
+          ? String(ownerRecord.id)
+          : record.user != null && typeof record.user !== 'object'
+            ? String(record.user)
+            : undefined,
     slug: pickString(record, ['slug']) ?? slugify(name),
     name,
     image: pickString(record, ['image', 'shop_image']) ?? null,
-    emoji: pickString(record, ['emoji']) ?? '🏪',
+    emoji: pickString(record, ['emoji']) ?? 'Store',
     address: pickString(record, ['address', 'location']),
     city: pickString(record, ['city']),
     description: pickString(record, ['description', 'bio']),
     isOpen: typeof record.is_open === 'boolean' ? record.is_open : typeof record.isOpen === 'boolean' ? record.isOpen : true,
     distanceKm: toNumber(record.distance ?? record.distance_km) || null,
     rating: toNumber(record.rating) || null,
+    latitude: record.latitude != null ? toNumber(record.latitude) : null,
+    longitude: record.longitude != null ? toNumber(record.longitude) : null,
     productsCount: toNumber(record.products_count ?? record.product_count) || undefined,
     subscriberCount: toNumber(record.subscribers ?? record.subscriber_count ?? record.followers) || undefined,
     memberSince: pickString(record, ['member_since', 'joined', 'created_at']),
@@ -144,6 +209,193 @@ function toReview(raw: unknown): ShopReview {
   };
 }
 
+function encodeChatThreadId(shopId: string | number, userId: string | number): string {
+  return `${shopId}:${userId}`;
+}
+
+function decodeChatThreadId(threadId: string): { shopId: string; userId: string } | null {
+  let normalized = threadId;
+  try {
+    normalized = decodeURIComponent(threadId);
+  } catch {
+    normalized = threadId;
+  }
+  const parts = normalized.split(':');
+  if (parts.length !== 2) return null;
+  const [shopId, userId] = parts;
+  if (!shopId || !userId) return null;
+  return { shopId, userId };
+}
+
+function toChatUiMessage(raw: unknown, viewerUserId?: string | number | null): Message {
+  const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const senderRecord = record.sender && typeof record.sender === 'object'
+    ? (record.sender as Record<string, unknown>)
+    : null;
+  const senderId = String(record.sender_id ?? senderRecord?.id ?? record.sender ?? '');
+  const productRaw = record.product;
+  const productRecord =
+    productRaw && typeof productRaw === 'object' ? (productRaw as Record<string, unknown>) : null;
+  const productIdValue = record.product_id ?? productRecord?.id ?? (typeof productRaw === 'number' ? productRaw : undefined);
+  const productId = productIdValue != null && String(productIdValue) !== '' ? String(productIdValue) : undefined;
+  const productName =
+    pickString(productRecord ?? {}, ['name', 'title']) ??
+    (typeof productRaw === 'string'
+      ? productRaw
+      : typeof productRaw === 'number'
+        ? `Product #${productRaw}`
+        : undefined);
+  const explicitIsMine =
+    typeof record.is_mine === 'boolean'
+      ? record.is_mine
+      : typeof record.isMine === 'boolean'
+        ? record.isMine
+        : undefined;
+  return {
+    id: String(record.id ?? ''),
+    senderName: pickString(record, ['sender_name', 'senderName']) ?? (senderId ? `User ${senderId}` : 'User'),
+    senderId,
+    body: pickString(record, ['body', 'content', 'message']) ?? '',
+    productId,
+    productName,
+    createdAt: pickString(record, ['createdAt', 'created_at', 'timestamp']) ?? new Date().toISOString(),
+    isMine:
+      explicitIsMine ??
+      (viewerUserId != null && String(viewerUserId) !== ''
+        ? senderId === String(viewerUserId)
+        : undefined)
+  };
+}
+
+function toChatUiThread(raw: unknown, viewerUserId?: string | number | null): Thread {
+  const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const shopRecord = record.shop && typeof record.shop === 'object' ? (record.shop as Record<string, unknown>) : null;
+  const otherUserRecord =
+    (record.other_user && typeof record.other_user === 'object'
+      ? (record.other_user as Record<string, unknown>)
+      : record.user && typeof record.user === 'object'
+        ? (record.user as Record<string, unknown>)
+        : null);
+  const customerRecord =
+    record.customer && typeof record.customer === 'object' ? (record.customer as Record<string, unknown>) : null;
+  const lastMessageRaw = record.last_message;
+  const lastMessageRecord =
+    lastMessageRaw && typeof lastMessageRaw === 'object' ? (lastMessageRaw as Record<string, unknown>) : null;
+  const lastMessageShopRecord =
+    lastMessageRecord?.shop && typeof lastMessageRecord.shop === 'object'
+      ? (lastMessageRecord.shop as Record<string, unknown>)
+      : null;
+  const lastMessageSenderRecord =
+    lastMessageRecord?.sender && typeof lastMessageRecord.sender === 'object'
+      ? (lastMessageRecord.sender as Record<string, unknown>)
+      : null;
+  const lastMessageReceiverRecord =
+    lastMessageRecord?.receiver && typeof lastMessageRecord.receiver === 'object'
+      ? (lastMessageRecord.receiver as Record<string, unknown>)
+      : null;
+
+  const shopId = String(
+    record.shop_id ??
+      record.shopId ??
+      shopRecord?.id ??
+      shopRecord?.pk ??
+      (typeof record.shop === 'string' || typeof record.shop === 'number' ? record.shop : undefined) ??
+      lastMessageRecord?.shop_id ??
+      (lastMessageRecord?.shopId as string | number | undefined) ??
+      lastMessageShopRecord?.id ??
+      lastMessageShopRecord?.pk ??
+      (lastMessageRecord &&
+      (typeof lastMessageRecord.shop === 'string' || typeof lastMessageRecord.shop === 'number')
+        ? lastMessageRecord.shop
+        : undefined) ??
+      ''
+  );
+
+  const senderId = String(
+    lastMessageRecord?.sender_id ??
+      lastMessageSenderRecord?.id ??
+      lastMessageSenderRecord?.pk ??
+      (lastMessageRecord &&
+      (typeof lastMessageRecord.sender === 'string' || typeof lastMessageRecord.sender === 'number')
+        ? lastMessageRecord.sender
+        : undefined) ??
+      ''
+  );
+  const receiverId = String(
+    lastMessageRecord?.receiver_id ??
+      lastMessageReceiverRecord?.id ??
+      lastMessageReceiverRecord?.pk ??
+      (lastMessageRecord &&
+      (typeof lastMessageRecord.receiver === 'string' || typeof lastMessageRecord.receiver === 'number')
+        ? lastMessageRecord.receiver
+        : undefined) ??
+      ''
+  );
+  const viewerId = viewerUserId != null && String(viewerUserId) !== '' ? String(viewerUserId) : '';
+  const inferredCounterpartyId =
+    viewerId && senderId && receiverId ? (senderId === viewerId ? receiverId : senderId) : '';
+  const shopOwnerId = String(
+    shopRecord?.owner_id ??
+      (shopRecord?.owner && typeof shopRecord.owner !== 'object' ? shopRecord.owner : undefined) ??
+      (shopRecord?.owner && typeof shopRecord.owner === 'object'
+        ? (shopRecord.owner as Record<string, unknown>).id ?? (shopRecord.owner as Record<string, unknown>).pk
+        : undefined) ??
+      lastMessageShopRecord?.owner_id ??
+      (lastMessageShopRecord?.owner && typeof lastMessageShopRecord.owner !== 'object' ? lastMessageShopRecord.owner : undefined) ??
+      (lastMessageShopRecord?.owner && typeof lastMessageShopRecord.owner === 'object'
+        ? (lastMessageShopRecord.owner as Record<string, unknown>).id ?? (lastMessageShopRecord.owner as Record<string, unknown>).pk
+        : undefined) ??
+      ''
+  );
+  const inferredRouteUserId =
+    viewerId && shopId
+      ? (shopOwnerId && viewerId === shopOwnerId ? inferredCounterpartyId || viewerId : viewerId)
+      : inferredCounterpartyId;
+
+  const routeUserId = String(
+    record.user_id ??
+      record.customer_id ??
+      record.other_user_id ??
+      record.userId ??
+      record.customerId ??
+      record.participant_user_id ??
+      record.thread_user_id ??
+      customerRecord?.id ??
+      customerRecord?.pk ??
+      (record.user && (typeof record.user === 'string' || typeof record.user === 'number') ? record.user : undefined) ??
+      otherUserRecord?.id ??
+      otherUserRecord?.pk ??
+      inferredRouteUserId ??
+      ''
+  );
+
+  const explicitOtherUserId = String(record.other_user_id ?? otherUserRecord?.id ?? otherUserRecord?.pk ?? '');
+  const isViewerShopOwner = Boolean(viewerId && shopOwnerId && viewerId === shopOwnerId);
+  const normalizedRouteUserId = !isViewerShopOwner && explicitOtherUserId ? explicitOtherUserId : routeUserId;
+  const lastMessage = lastMessageRecord ? toChatUiMessage(lastMessageRecord, viewerUserId) : null;
+  const shopName =
+    pickString(record, ['shop_name']) ??
+    pickString(shopRecord ?? {}, ['name']) ??
+    pickString(lastMessageShopRecord ?? {}, ['name']) ??
+    'Conversation';
+  const otherUserEmail =
+    pickString(record, ['other_user_email']) ??
+    pickString(otherUserRecord ?? {}, ['email']) ??
+    pickString(customerRecord ?? {}, ['email']);
+
+  return {
+    id:
+      shopId && normalizedRouteUserId
+        ? encodeChatThreadId(shopId, normalizedRouteUserId)
+        : String(record.id ?? record.thread_id ?? record.conversation_id ?? ''),
+    shopId: shopId || undefined,
+    otherUserId: normalizedRouteUserId || undefined,
+    title: otherUserEmail ? `${shopName} - ${otherUserEmail}` : shopName,
+    lastMessage: lastMessage?.body ?? pickString(record, ['last_message_text', 'lastMessage']),
+    updatedAt: lastMessage?.createdAt ?? pickString(record, ['updated_at', 'updatedAt']) ?? new Date().toISOString(),
+    unreadCount: toNumber(record.unread_count ?? record.unreadCount) || undefined
+  };
+}
 export function toProduct(raw: unknown): Product {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const name = pickString(record, ['title', 'name', 'product_name']) ?? 'Fresh deal item';
@@ -375,6 +627,19 @@ async function requestWithFallback<T>(paths: string[]): Promise<T> {
   throw lastError ?? new Error('No API endpoint responded successfully.');
 }
 
+export async function getCurrentUserId(): Promise<string | number | null> {
+  try {
+    const me = await apiRequest<unknown>('/auth/me/');
+    if (me && typeof me === 'object' && !Array.isArray(me)) {
+      const id = (me as Record<string, unknown>).id;
+      if (typeof id === 'string' || typeof id === 'number') return id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getShops() {
   const payload = await requestWithFallback<unknown>([apiPaths.shops, apiPaths.shopsFallback]);
   const normalized = normalizeListResponse<unknown>(payload);
@@ -387,7 +652,7 @@ export async function getShop(shopId: string) {
 }
 
 export async function getProducts() {
-  const payload = await requestWithFallback<unknown>([apiPaths.products, apiPaths.productsFallback]);
+  const payload = await requestWithFallback<unknown>([apiPaths.products, apiPaths.productsAll, apiPaths.productsFallback]);
   const normalized = normalizeListResponse<unknown>(payload);
   return { ...normalized, data: normalized.data.map(toProduct) };
 }
@@ -403,27 +668,63 @@ export async function getCart() {
 }
 
 export async function addToCart(productId: string, quantity = 1) {
-  const payload = await apiRequest<unknown>(apiPaths.cartAdd, {
-    method: 'POST',
-    body: { product_id: productId, quantity }
-  });
-  return toCart(payload);
+  let lastError: unknown = null;
+  for (const path of [apiPaths.cartAdd, apiPaths.cartAddToCart, apiPaths.cartAddToCartAjax]) {
+    try {
+      await apiRequest<unknown>(path, {
+        method: 'POST',
+        body: { product_id: productId, quantity }
+      });
+      return getCart();
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  throw lastError ?? new Error('Unable to add to cart.');
 }
 
 export async function updateCartItem(productId: string, quantity: number) {
-  const payload = await apiRequest<unknown>(apiPaths.cartUpdateQuantity, {
+  await apiRequest<unknown>(apiPaths.cartUpdateQuantity, {
     method: 'POST',
     body: { product_id: productId, quantity }
   });
-  return toCart(payload);
+  return getCart();
 }
 
 export async function removeCartItem(productId: string) {
-  const payload = await apiRequest<unknown>(apiPaths.cartRemove, {
+  let lastError: unknown = null;
+  for (const path of [apiPaths.cartRemove, apiPaths.cartRemoveFromCart]) {
+    try {
+      await apiRequest<unknown>(path, {
+        method: 'POST',
+        body: { product_id: productId }
+      });
+      return getCart();
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  throw lastError ?? new Error('Unable to remove item from cart.');
+}
+
+export async function removeSingleCartItem(productId: string) {
+  await apiRequest<unknown>(apiPaths.cartRemoveSingleFromCart, {
     method: 'POST',
-    body: { product_id: productId }
+    body: { product_id: productId, quantity: 1 }
   });
-  return toCart(payload);
+  return getCart();
+}
+
+export async function clearCart() {
+  await apiRequest<unknown>(apiPaths.cartClear, {
+    method: 'POST',
+    body: {}
+  });
+  return getCart();
 }
 
 export async function applyCoupon(code: string) {
@@ -445,18 +746,87 @@ export async function getWishlist() {
 }
 
 export async function addWishlist(productId: string) {
-  return apiRequest(`${apiPaths.addWishlist}${productId}/favourite/`, {
-    method: 'POST'
-  });
+  let lastError: unknown;
+  for (const path of [`${apiPaths.addWishlist}${productId}/favourite/`, apiPaths.productToggleFavourite(productId)]) {
+    try {
+      return await apiRequest(path, { method: 'POST' });
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  throw lastError ?? new Error('Unable to add wishlist item.');
 }
 
 export async function removeWishlist(itemId: string) {
   return apiRequest(apiPaths.removeWishlist(itemId), { method: 'DELETE' });
 }
 
+export async function removeWishlistByProduct(productId: string) {
+  let lastError: unknown;
+  for (const path of [apiPaths.removeWishlistByProduct(productId), apiPaths.productToggleFavourite(productId)]) {
+    try {
+      return await apiRequest(path, { method: 'DELETE' });
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) continue;
+      throw error;
+    }
+  }
+  throw lastError ?? new Error('Unable to remove wishlist item.');
+}
+
+export async function getWishlistItems() {
+  const payload = await apiRequest<unknown>(apiPaths.wishlistItems);
+  return normalizeListResponse<unknown>(payload);
+}
+
+export async function getWishlistItem(id: string) {
+  return apiRequest<unknown>(apiPaths.wishlistItemById(id));
+}
+
+export async function createWishlistItem(payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistItems, { method: 'POST', body: payload });
+}
+
+export async function updateWishlistItem(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistItemById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchWishlistItem(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistItemById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteWishlistItem(id: string) {
+  return apiRequest<unknown>(apiPaths.wishlistItemById(id), { method: 'DELETE' });
+}
+
+export async function saveWishlistPreferences(itemId: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistPreferences(itemId), { method: 'POST', body: payload });
+}
+
 export async function getCustomerAnalytics() {
   const payload = await apiRequest<unknown>(apiPaths.customerAnalytics);
   return toCustomerAnalytics(payload);
+}
+
+export async function getDispatcherAnalytics() {
+  return apiRequest<unknown>(apiPaths.dispatcherAnalytics);
+}
+
+export async function getHomeDashboard() {
+  return apiRequest<unknown>(apiPaths.homeDashboard);
+}
+
+export async function getHomeCategoryCount() {
+  return apiRequest<unknown>(apiPaths.homeCategoryCount);
+}
+
+export async function getNearbyShops() {
+  const payload = await apiRequest<unknown>(apiPaths.nearbyShops);
+  const normalized = normalizeListResponse<unknown>(payload);
+  return { ...normalized, data: normalized.data.map(toShop) };
 }
 
 export async function getCustomerAnalyticsDashboard(): Promise<CustomerAnalyticsDashboard> {
@@ -521,33 +891,378 @@ export async function getCustomerAnalyticsDashboard(): Promise<CustomerAnalytics
   };
 }
 
-export async function getBudget() {
-  return apiRequest<BudgetSummary>(apiPaths.budget);
+export type BudgetTemplateItemInput = {
+  id?: string;
+  productId?: string;
+  name: string;
+  quantity: number;
+  price?: number;
+  category?: string;
+};
+
+export type BudgetTemplateSummary = {
+  id: string;
+  name: string;
+  monthlyLimit: number;
+  itemCount: number;
+  items?: BudgetTemplateItemInput[];
+};
+
+function unwrapBudgetPayload(raw: unknown, keys: string[] = ['budget', 'data', 'result']): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const record = raw as Record<string, unknown>;
+  for (const key of keys) {
+    if (record[key] != null) return record[key];
+  }
+  return raw;
+}
+
+function toBudgetItem(raw: unknown): BudgetSummary['items'][number] {
+  const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const productId = record.product != null ? String(record.product) : '';
+  const explicitName = pickString(record, ['name', 'item_name', 'product_name', 'title']);
+  return {
+    id: String(record.id ?? record.item_id ?? record.shopping_list_item_id ?? ''),
+    productId: productId || undefined,
+    name: explicitName || (productId ? `Product #${productId}` : 'Budget item'),
+    price: toNumber(record.price ?? record.unit_price ?? record.amount),
+    quantity: Math.max(1, Math.floor(toNumber(record.quantity ?? record.qty ?? 1))),
+    category: pickString(record, ['category', 'category_name'])
+  };
+}
+
+function toBudgetSummary(raw: unknown): BudgetSummary {
+  const unwrapped = unwrapBudgetPayload(raw);
+  const record = unwrapped && typeof unwrapped === 'object'
+    ? (unwrapped as Record<string, unknown>)
+    : {};
+  const monthlyLimit = toNumber(record.total_budget ?? record.monthly_limit ?? record.monthlyLimit ?? record.limit ?? record.budget_limit);
+  const spent = toNumber(record.spent ?? record.spent_amount ?? record.planned_spend ?? record.total_spent);
+  const items = pickArray(record, ['items', 'budget_items', 'shopping_list_items']).map(toBudgetItem);
+  const remainingRaw = record.remaining ?? record.remaining_amount ?? record.balance;
+  const remaining = remainingRaw != null ? toNumber(remainingRaw) : monthlyLimit - spent;
+  return {
+    id: String(record.id ?? record.budget_id ?? ''),
+    name: pickString(record, ['name', 'title']) ?? (monthlyLimit > 0 ? `Budget ${monthlyLimit}` : 'Shopping Budget'),
+    monthlyLimit,
+    spent,
+    remaining,
+    items,
+    insights: pickArray(record, ['insights']).map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const entry = item as Record<string, unknown>;
+      return {
+        title: pickString(entry, ['title']) ?? 'Insight',
+        body: pickString(entry, ['body', 'message']) ?? ''
+      };
+    }).filter((item): item is NonNullable<BudgetSummary['insights']>[number] => Boolean(item))
+  };
+}
+
+function toBudgetTemplateSummary(raw: unknown): BudgetTemplateSummary {
+  const unwrapped = unwrapBudgetPayload(raw, ['template', 'data', 'result']);
+  const record = unwrapped && typeof unwrapped === 'object'
+    ? (unwrapped as Record<string, unknown>)
+    : {};
+  const items = pickArray(record, ['items', 'template_items', 'budget_template_items']).map(toBudgetItem);
+  const itemCount = toNumber(record.items_count ?? record.item_count ?? items.length);
+  return {
+    id: String(record.id ?? record.template_id ?? ''),
+    name: pickString(record, ['name', 'title']) ?? 'Budget Template',
+    monthlyLimit: toNumber(record.monthly_limit ?? record.monthlyLimit ?? record.limit ?? record.budget_limit),
+    itemCount,
+    items: items.length ? items : undefined
+  };
+}
+
+function isBudgetRecord(raw: unknown): raw is Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const record = raw as Record<string, unknown>;
+  return 'total_budget' in record || 'monthly_limit' in record || 'budget_id' in record;
+}
+
+async function getBudgetItemsForBudget(budgetId: string): Promise<BudgetSummary['items']> {
+  try {
+    const payload = await apiRequest<unknown>(apiPaths.budgetItems);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return normalized.data
+      .filter((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const record = item as Record<string, unknown>;
+        return String(record.budget ?? record.budget_id ?? '') === String(budgetId);
+      })
+      .map(toBudgetItem);
+  } catch {
+    return [];
+  }
+}
+
+async function getBudgetTemplateItemsForTemplate(templateId: string): Promise<BudgetTemplateItemInput[]> {
+  try {
+    const payload = await apiRequest<unknown>(apiPaths.budgetTemplateItems);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return normalized.data
+      .filter((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const record = item as Record<string, unknown>;
+        return String(record.template ?? record.template_id ?? '') === String(templateId);
+      })
+      .map((item) => {
+        const record = item as Record<string, unknown>;
+        return {
+          id: String(record.id ?? ''),
+          productId: record.product != null ? String(record.product) : undefined,
+          name: pickString(record, ['name']) ?? (record.product != null ? `Product #${record.product}` : 'Template item'),
+          quantity: Math.max(1, Math.floor(toNumber(record.quantity ?? 1))),
+          price: toNumber(record.price)
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
+async function hydrateBudget(raw: unknown): Promise<BudgetSummary> {
+  const base = toBudgetSummary(raw);
+  if (!base.id) return base;
+  const items = await getBudgetItemsForBudget(base.id);
+  const spent = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  return {
+    ...base,
+    items,
+    spent,
+    remaining: base.monthlyLimit - spent
+  };
+}
+
+async function coerceBudgetFromAction(raw: unknown, budgetId?: string): Promise<BudgetSummary> {
+  if (isBudgetRecord(unwrapBudgetPayload(raw))) {
+    return hydrateBudget(raw);
+  }
+  if (budgetId) return getBudgetById(budgetId);
+  return getBudget();
+}
+
+export async function getBudgets() {
+  const payload = await apiRequest<unknown>(apiPaths.budget);
+  const normalized = normalizeListResponse<unknown>(payload);
+  const data = await Promise.all(normalized.data.map((item) => hydrateBudget(item)));
+  return { ...normalized, data };
+}
+
+export async function getBudgetById(id: string) {
+  const payload = await apiRequest<unknown>(apiPaths.budgetById(id));
+  return hydrateBudget(payload);
+}
+
+export async function getBudget(budgetId?: string) {
+  if (budgetId) return getBudgetById(budgetId);
+  const payload = await apiRequest<unknown>(apiPaths.budget);
+  if (Array.isArray(payload)) {
+    const first = payload[0];
+    if (!first) throw new Error('No budgets found');
+    return hydrateBudget(first);
+  }
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    if (Array.isArray(record.results) || Array.isArray(record.data)) {
+      const normalized = normalizeListResponse<unknown>(payload);
+      const first = normalized.data[0];
+      if (!first) throw new Error('No budgets found');
+      return hydrateBudget(first);
+    }
+  }
+  return hydrateBudget(payload);
 }
 
 export async function createBudget(payload: { name: string; monthlyLimit: number }) {
-  return apiRequest<BudgetSummary>(apiPaths.budget, { method: 'POST', body: payload });
+  try {
+    const raw = await apiRequest<unknown>(apiPaths.budget, {
+      method: 'POST',
+      body: { total_budget: payload.monthlyLimit }
+    });
+    return hydrateBudget(raw);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400) throw error;
+    const userId = await getCurrentUserId();
+    if (userId == null) throw error;
+    const raw = await apiRequest<unknown>(apiPaths.budget, {
+      method: 'POST',
+      body: { total_budget: payload.monthlyLimit, user: userId }
+    });
+    return hydrateBudget(raw);
+  }
 }
 
-export async function addBudgetItem(payload: { name: string; quantity: number; price: number }) {
-  return apiRequest<BudgetSummary>(apiPaths.budgetItems, { method: 'POST', body: payload });
+export async function updateBudget(id: string, payload: Partial<{ name: string; monthlyLimit: number }>) {
+  const raw = await apiRequest<unknown>(apiPaths.budgetById(id), {
+    method: 'PATCH',
+    body: {
+      ...(payload.monthlyLimit != null ? { total_budget: payload.monthlyLimit } : {})
+    }
+  });
+  return hydrateBudget(raw);
 }
 
-export async function updateBudgetItem(id: string, payload: { quantity?: number; price?: number }) {
-  return apiRequest<BudgetSummary>(apiPaths.budgetItemById(id), { method: 'PATCH', body: payload });
+export async function deleteBudget(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.budgetById(id), { method: 'DELETE' });
 }
 
-export async function removeBudgetItem(id: string) {
-  return apiRequest<BudgetSummary>(apiPaths.budgetItemById(id), { method: 'DELETE' });
+export async function addBudgetItem(payload: { name: string; quantity: number; price: number }, budgetId?: string) {
+  if (!budgetId) {
+    throw new Error('Budget ID is required to add items.');
+  }
+  const raw = await apiRequest<unknown>(apiPaths.budgetAddItem(budgetId), {
+    method: 'POST',
+    body: {
+      name: payload.name,
+      quantity: payload.quantity
+    }
+  });
+  return coerceBudgetFromAction(raw, budgetId);
+}
+
+export async function updateBudgetItem(id: string, payload: { quantity?: number; price?: number }, budgetId?: string) {
+  if (!budgetId) {
+    throw new Error('Budget ID is required to update items.');
+  }
+  const raw = await apiRequest<unknown>(apiPaths.budgetUpdateItemQuantity(budgetId), {
+    method: 'POST',
+    body: { item_id: id, quantity: payload.quantity }
+  });
+  return coerceBudgetFromAction(raw, budgetId);
+}
+
+export async function removeBudgetItem(id: string, budgetId?: string) {
+  if (!budgetId) {
+    throw new Error('Budget ID is required to remove items.');
+  }
+  const raw = await apiRequest<unknown>(apiPaths.budgetRemoveItem(budgetId), {
+    method: 'POST',
+    body: { item_id: id }
+  });
+  return coerceBudgetFromAction(raw, budgetId);
+}
+
+export async function duplicateBudget(id: string) {
+  const raw = await apiRequest<unknown>(apiPaths.budgetDuplicate(id), { method: 'POST', body: {} });
+  return hydrateBudget(raw);
+}
+
+export async function addBudgetItemsFromCart(id: string) {
+  const raw = await apiRequest<unknown>(apiPaths.budgetFromCart(id), { method: 'POST', body: {} });
+  return coerceBudgetFromAction(raw, id);
 }
 
 export async function getSavedBudgets() {
-  const payload = await apiRequest<unknown>(apiPaths.budgetSaved);
-  return normalizeListResponse<BudgetSummary>(payload);
+  try {
+    return await getBudgets();
+  } catch {
+    const payload = await apiRequest<unknown>(apiPaths.budgetSaved);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return { ...normalized, data: normalized.data.map(toBudgetSummary) };
+  }
 }
 
-export async function saveTemplate(payload: { name: string; monthlyLimit: number }) {
-  return apiRequest(apiPaths.budgetTemplates, { method: 'POST', body: payload });
+export async function getBudgetTemplates() {
+  const payload = await apiRequest<unknown>(apiPaths.budgetTemplates);
+  const normalized = normalizeListResponse<unknown>(payload);
+  const baseTemplates = normalized.data.map(toBudgetTemplateSummary);
+  const hydrated = await Promise.all(
+    baseTemplates.map(async (template) => {
+      const items = await getBudgetTemplateItemsForTemplate(template.id);
+      return {
+        ...template,
+        itemCount: items.length || template.itemCount,
+        items: items.length ? items : template.items
+      };
+    })
+  );
+  return { ...normalized, data: hydrated };
+}
+
+export async function getBudgetTemplate(id: string) {
+  const payload = await apiRequest<unknown>(apiPaths.budgetTemplateById(id));
+  const base = toBudgetTemplateSummary(payload);
+  const items = await getBudgetTemplateItemsForTemplate(base.id);
+  return {
+    ...base,
+    itemCount: items.length || base.itemCount,
+    items: items.length ? items : base.items
+  };
+}
+
+export async function updateBudgetTemplate(id: string, payload: Partial<{ name: string }>) {
+  const raw = await apiRequest<unknown>(apiPaths.budgetTemplateById(id), {
+    method: 'PATCH',
+    body: {
+      ...(payload.name != null ? { name: payload.name } : {})
+    }
+  });
+  return toBudgetTemplateSummary(raw);
+}
+
+export async function deleteBudgetTemplate(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.budgetTemplateById(id), { method: 'DELETE' });
+}
+
+export async function addBudgetTemplateItem(templateId: string, item: BudgetTemplateItemInput) {
+  if (!item.productId) throw new Error('Template item requires a product ID.');
+  const raw = await apiRequest<unknown>(apiPaths.budgetTemplateAddItem(templateId), {
+    method: 'POST',
+    body: {
+      product_id: item.productId,
+      quantity: item.quantity
+    }
+  });
+  return toBudgetTemplateSummary(raw);
+}
+
+export async function removeBudgetTemplateItem(templateId: string, itemId: string) {
+  const raw = await apiRequest<unknown>(apiPaths.budgetTemplateRemoveItem(templateId), {
+    method: 'POST',
+    body: { item_id: itemId, id: itemId }
+  });
+  return toBudgetTemplateSummary(raw);
+}
+
+export async function applyBudgetTemplate(templateId: string, budgetId?: string) {
+  if (!budgetId) throw new Error('Budget ID is required to apply a template.');
+  const raw = await apiRequest<unknown>(apiPaths.budgetTemplateApply(templateId), {
+    method: 'POST',
+    body: { budget_id: budgetId }
+  });
+  return coerceBudgetFromAction(raw, budgetId);
+}
+
+export async function saveTemplate(payload: { name: string; monthlyLimit: number; items?: BudgetTemplateItemInput[] }) {
+  let createdRaw: unknown;
+  try {
+    createdRaw = await apiRequest<unknown>(apiPaths.budgetTemplates, {
+      method: 'POST',
+      body: { name: payload.name }
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400) throw error;
+    const userId = await getCurrentUserId();
+    if (userId == null) throw error;
+    createdRaw = await apiRequest<unknown>(apiPaths.budgetTemplates, {
+      method: 'POST',
+      body: { name: payload.name, user: userId }
+    });
+  }
+  const created = toBudgetTemplateSummary(createdRaw);
+  if (payload.items?.length) {
+    for (const item of payload.items) {
+      if (!item.productId) continue;
+      try {
+        await addBudgetTemplateItem(created.id, item);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return created;
 }
 
 export async function getInsights() {
@@ -555,19 +1270,286 @@ export async function getInsights() {
 }
 
 export async function getThreads() {
-  const payload = await apiRequest<unknown>(apiPaths.threads);
-  return normalizeListResponse<Thread>(payload);
+  try {
+    const viewerUserId = await getCurrentUserId().catch(() => null);
+    const payload = await apiRequest<unknown>(apiPaths.threads);
+    const normalized = normalizeListResponse<unknown>(payload);
+    return { ...normalized, data: normalized.data.map((item) => toChatUiThread(item, viewerUserId)) };
+  } catch {
+    const payload = await apiRequest<unknown>(apiPaths.threads);
+    return normalizeListResponse<Thread>(payload);
+  }
 }
 
 export async function getThread(threadId: string) {
-  return apiRequest<{ thread: Thread; messages: Message[] }>(apiPaths.threadById(threadId));
+  const parsed = decodeChatThreadId(threadId);
+  if (!parsed) {
+    const viewerUserId = await getCurrentUserId();
+    const legacy = await apiRequest<{ thread: unknown; messages: unknown[] }>(apiPaths.threadById(threadId));
+    const normalizedThread = toChatUiThread(legacy.thread, viewerUserId);
+    const normalizedMessages = Array.isArray(legacy.messages)
+      ? legacy.messages.map((item) => toChatUiMessage(item, viewerUserId))
+      : [];
+    return {
+      thread: {
+        ...normalizedThread,
+        id: normalizedThread.id || threadId,
+      },
+      messages: normalizedMessages,
+    };
+  }
+
+  const { shopId, userId } = parsed;
+  const viewerUserId = await getCurrentUserId();
+  const [threadResult, messagesResult] = await Promise.allSettled([
+    apiRequest<unknown>(apiPaths.chatThreadByParticipants(shopId, userId)),
+    apiRequest<unknown>(apiPaths.chatThreadMessagesByParticipants(shopId, userId))
+  ]);
+
+  const participantPayload = threadResult.status === 'fulfilled' ? threadResult.value : null;
+  const participantRecord =
+    participantPayload && typeof participantPayload === 'object' ? (participantPayload as Record<string, unknown>) : null;
+
+  const threadMetaCandidateRaw =
+    participantRecord?.thread && typeof participantRecord.thread === 'object'
+      ? participantRecord.thread
+      : participantRecord && !(Array.isArray(participantPayload))
+        ? participantRecord
+        : null;
+  const participantThread = threadMetaCandidateRaw ? toChatUiThread(threadMetaCandidateRaw, viewerUserId) : null;
+
+  const threadMessagesRaw = participantPayload ? normalizeListResponse<unknown>(participantPayload).data : [];
+  const participantNestedMessages = participantRecord ? pickArray(participantRecord, ['messages', 'results']) : [];
+  const incrementalRaw =
+    messagesResult.status === 'fulfilled'
+      ? Array.isArray(messagesResult.value)
+        ? messagesResult.value
+        : messagesResult.value && typeof messagesResult.value === 'object'
+          ? [
+              ...normalizeListResponse<unknown>(messagesResult.value).data,
+              ...pickArray(messagesResult.value as Record<string, unknown>, ['messages', 'results'])
+            ]
+          : []
+      : [];
+
+  const mergedByKey = new Map<string, unknown>();
+  for (const item of [...threadMessagesRaw, ...participantNestedMessages, ...incrementalRaw]) {
+    const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+    const id = record?.id != null ? String(record.id) : '';
+    const key = id || JSON.stringify([record?.created_at ?? record?.createdAt ?? record?.timestamp ?? '', record?.content ?? record?.body ?? record?.message ?? '']);
+    if (!mergedByKey.has(key)) mergedByKey.set(key, item);
+  }
+
+  const messages = Array.from(mergedByKey.values())
+    .map((item) => toChatUiMessage(item, viewerUserId))
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  const inbox = await getThreads().catch(() => ({ data: [] as Thread[] }));
+  const inboxMatch =
+    inbox.data.find((item) => item.id === threadId) ??
+    inbox.data.find((item) => item.shopId === shopId && item.otherUserId === userId);
+
+  const inferredTitle =
+    participantThread?.title && !participantThread.title.startsWith('Conversation')
+      ? participantThread.title
+      : messages.find((m) => m.senderName)?.senderName
+        ? `Chat with ${messages.find((m) => m.senderName)?.senderName}`
+        : undefined;
+
+  const thread =
+    inboxMatch ??
+    (participantThread
+      ? {
+          ...participantThread,
+          id: participantThread.id || threadId,
+          title: inferredTitle ?? participantThread.title,
+          lastMessage: participantThread.lastMessage ?? messages.at(-1)?.body,
+          updatedAt: participantThread.updatedAt ?? messages.at(-1)?.createdAt ?? new Date().toISOString()
+        }
+      : {
+          id: threadId,
+          shopId,
+          otherUserId: userId,
+          title: inferredTitle ?? `Conversation ${shopId}:${userId}`,
+          lastMessage: messages.at(-1)?.body,
+          updatedAt: messages.at(-1)?.createdAt ?? new Date().toISOString()
+        });
+
+  return { thread, messages };
+}
+export async function getThreadMessages(threadId: string, afterId?: string) {
+  const parsed = decodeChatThreadId(threadId);
+  if (!parsed) return [] as Message[];
+  const viewerUserId = await getCurrentUserId();
+  const path = apiPaths.chatThreadMessagesByParticipants(parsed.shopId, parsed.userId);
+  const suffix = afterId ? `?after=${encodeURIComponent(afterId)}` : '';
+  let payload: unknown;
+  try {
+    payload = await apiRequest<unknown>(`${path}${suffix}`);
+  } catch (error) {
+    if (!(afterId && error instanceof ApiError && error.status === 400)) throw error;
+    payload = await apiRequest<unknown>(path);
+  }
+  const raw =
+    Array.isArray(payload)
+      ? payload
+      : payload && typeof payload === 'object'
+        ? [...normalizeListResponse<unknown>(payload).data, ...pickArray(payload as Record<string, unknown>, ['messages', 'results'])]
+        : [];
+  return raw.map((item) => toChatUiMessage(item, viewerUserId));
+}
+export async function sendReply(threadId: string, body: string, options?: { productId?: string }) {
+  const parsed = decodeChatThreadId(threadId);
+  if (!parsed) {
+    const viewerUserId = await getCurrentUserId();
+    const raw = await apiRequest<unknown>(apiPaths.sendReply(threadId), {
+      method: 'POST',
+      body: { body }
+    });
+    return toChatUiMessage(raw, viewerUserId);
+  }
+  const viewerUserId = await getCurrentUserId();
+  const raw = await apiRequest<unknown>(apiPaths.chatSend, {
+    method: 'POST',
+    body: {
+      receiver_id: parsed.userId,
+      shop_id: parsed.shopId,
+      ...(options?.productId ? { product_id: options.productId } : {}),
+      content: body
+    }
+  });
+  return toChatUiMessage(raw, viewerUserId);
 }
 
-export async function sendReply(threadId: string, body: string) {
-  return apiRequest<Message>(apiPaths.sendReply(threadId), {
-    method: 'POST',
-    body: { body }
+export type ApiChatMessage = {
+  id: string;
+  shop: string | number;
+  sender: string | number;
+  receiver: string | number;
+  content: string;
+  product?: string | number | null;
+  timestamp?: string;
+  is_read?: boolean;
+};
+
+export async function getChatMessages() {
+  const payload = await apiRequest<unknown>(apiPaths.chatMessages);
+  return normalizeListResponse<ApiChatMessage>(payload);
+}
+
+export async function createChatMessage(payload: {
+  shop: string | number;
+  receiver: string | number;
+  content: string;
+  product?: string | number | null;
+  sender?: string | number;
+  is_read?: boolean;
+}) {
+  try {
+    return await apiRequest<ApiChatMessage>(apiPaths.chatMessages, {
+      method: 'POST',
+      body: payload
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400 || payload.sender != null) throw error;
+    const userId = await getCurrentUserId();
+    if (userId == null) throw error;
+    return apiRequest<ApiChatMessage>(apiPaths.chatMessages, {
+      method: 'POST',
+      body: { ...payload, sender: userId }
+    });
+  }
+}
+
+export async function getChatMessage(id: string) {
+  return apiRequest<ApiChatMessage>(apiPaths.chatMessageById(id));
+}
+
+export async function updateChatMessage(
+  id: string,
+  payload: Partial<Omit<ApiChatMessage, 'id'>> & Pick<ApiChatMessage, 'shop' | 'receiver' | 'content'>
+) {
+  return apiRequest<ApiChatMessage>(apiPaths.chatMessageById(id), {
+    method: 'PUT',
+    body: payload
   });
+}
+
+export async function patchChatMessage(id: string, payload: Partial<Omit<ApiChatMessage, 'id'>>) {
+  return apiRequest<ApiChatMessage>(apiPaths.chatMessageById(id), {
+    method: 'PATCH',
+    body: payload
+  });
+}
+
+export async function deleteChatMessage(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.chatMessageById(id), { method: 'DELETE' });
+}
+
+export type ApiComment = {
+  id: string;
+  post?: string | number;
+  user?: string | number;
+  content: string;
+  timestamp?: string;
+  reply?: string | number | null;
+};
+
+export async function getComments() {
+  const payload = await apiRequest<unknown>(apiPaths.comments);
+  return normalizeListResponse<ApiComment>(payload);
+}
+
+export async function createComment(payload: { post: string | number; content: string; reply?: string | number | null }) {
+  try {
+    return await apiRequest<ApiComment>(apiPaths.comments, {
+      method: 'POST',
+      body: payload
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400) throw error;
+    const userId = await getCurrentUserId();
+    if (userId == null) throw error;
+    return apiRequest<ApiComment>(apiPaths.comments, {
+      method: 'POST',
+      body: { ...payload, user: userId }
+    });
+  }
+}
+
+export async function getComment(id: string) {
+  return apiRequest<ApiComment>(apiPaths.commentById(id));
+}
+
+export async function updateComment(
+  id: string,
+  payload: Partial<ApiComment> & Pick<ApiComment, 'content'>
+) {
+  try {
+    return await apiRequest<ApiComment>(apiPaths.commentById(id), {
+      method: 'PUT',
+      body: payload
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400 || payload.user != null) throw error;
+    const userId = await getCurrentUserId();
+    if (userId == null) throw error;
+    return apiRequest<ApiComment>(apiPaths.commentById(id), {
+      method: 'PUT',
+      body: { ...payload, user: userId }
+    });
+  }
+}
+
+export async function patchComment(id: string, payload: Partial<ApiComment>) {
+  return apiRequest<ApiComment>(apiPaths.commentById(id), {
+    method: 'PATCH',
+    body: payload
+  });
+}
+
+export async function deleteComment(id: string): Promise<void> {
+  await apiRequest<void>(apiPaths.commentById(id), { method: 'DELETE' });
 }
 
 export async function getAdminAnalytics() {
@@ -694,6 +1676,162 @@ export async function createProduct(payload: Partial<Product>) {
   });
 }
 
+export async function getFoodcreateCategories() {
+  const payload = await apiRequest<unknown>(apiPaths.foodcreateCategories);
+  return normalizeListResponse<unknown>(payload);
+}
+
+export async function createFoodcreateCategory(payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateCategories, { method: 'POST', body: payload });
+}
+
+export async function getFoodcreateCategory(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateCategoryById(id));
+}
+
+export async function updateFoodcreateCategory(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateCategoryById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchFoodcreateCategory(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateCategoryById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteFoodcreateCategory(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateCategoryById(id), { method: 'DELETE' });
+}
+
+export async function getFoodcreateSubCategories(params?: { category?: string }) {
+  const q = params?.category ? `?category=${encodeURIComponent(params.category)}` : '';
+  const payload = await apiRequest<unknown>(`${apiPaths.foodcreateSubCategories}${q}`);
+  return normalizeListResponse<unknown>(payload);
+}
+
+export async function createFoodcreateSubCategory(payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateSubCategories, { method: 'POST', body: payload });
+}
+
+export async function getFoodcreateSubCategory(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateSubCategoryById(id));
+}
+
+export async function updateFoodcreateSubCategory(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateSubCategoryById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchFoodcreateSubCategory(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateSubCategoryById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteFoodcreateSubCategory(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateSubCategoryById(id), { method: 'DELETE' });
+}
+
+export async function getFoodcreateProducts() {
+  const payload = await apiRequest<unknown>(apiPaths.foodcreateProducts);
+  const normalized = normalizeListResponse<unknown>(payload);
+  return { ...normalized, data: normalized.data.map(toProduct) };
+}
+
+export async function getFoodcreateProduct(id: string) {
+  const payload = await apiRequest<unknown>(apiPaths.foodcreateProductById(id));
+  return toProduct(payload);
+}
+
+export async function updateFoodcreateProduct(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchFoodcreateProduct(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteFoodcreateProduct(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductById(id), { method: 'DELETE' });
+}
+
+export async function duplicateFoodcreateProduct(id: string) {
+  const payload = await apiRequest<unknown>(apiPaths.foodcreateProductDuplicate(id), { method: 'POST' });
+  return toProduct(payload);
+}
+
+export async function loadFoodcreateSubcategories(categoryId?: string) {
+  const queryCandidates = categoryId
+    ? [
+        `?category=${encodeURIComponent(categoryId)}`,
+        `?category_id=${encodeURIComponent(categoryId)}`,
+        `?id=${encodeURIComponent(categoryId)}`,
+      ]
+    : [''];
+  let lastError: unknown;
+  for (const q of queryCandidates) {
+    try {
+      return await apiRequest<unknown>(`${apiPaths.foodcreateProductLoadSubcategories}${q}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error('Failed to load subcategories');
+}
+
+export async function lookupFoodcreateProduct(params?: { q?: string; id?: string }) {
+  const search = new URLSearchParams();
+  if (params?.q) search.set('q', params.q);
+  if (params?.id) search.set('id', params.id);
+  const suffix = search.size ? `?${search.toString()}` : '';
+  return apiRequest<unknown>(`${apiPaths.foodcreateProductLookup}${suffix}`);
+}
+
+export async function getFoodcreateProductImages() {
+  const payload = await apiRequest<unknown>(apiPaths.foodcreateProductImages);
+  return normalizeListResponse<unknown>(payload);
+}
+
+export async function createFoodcreateProductImage(formData: FormData) {
+  return formDataRequest<unknown>(apiPaths.foodcreateProductImages, formData, 'POST');
+}
+
+export async function getFoodcreateProductImage(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductImageById(id));
+}
+
+export async function updateFoodcreateProductImage(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductImageById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchFoodcreateProductImage(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductImageById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteFoodcreateProductImage(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateProductImageById(id), { method: 'DELETE' });
+}
+
+export async function getFoodcreateReviewRatings() {
+  const payload = await apiRequest<unknown>(apiPaths.foodcreateReviewRatings);
+  return normalizeListResponse<unknown>(payload);
+}
+
+export async function createFoodcreateReviewRating(payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateReviewRatings, { method: 'POST', body: payload });
+}
+
+export async function getFoodcreateReviewRating(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateReviewRatingById(id));
+}
+
+export async function updateFoodcreateReviewRating(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateReviewRatingById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchFoodcreateReviewRating(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.foodcreateReviewRatingById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteFoodcreateReviewRating(id: string) {
+  return apiRequest<unknown>(apiPaths.foodcreateReviewRatingById(id), { method: 'DELETE' });
+}
+
 export async function getShopProducts(shopId: string) {
   try {
     const payload = await requestWithFallback<unknown>([
@@ -711,10 +1849,7 @@ export async function getShopProducts(shopId: string) {
 
 export async function getShopReviews(shopId: string): Promise<ShopReview[]> {
   try {
-    const payload = await requestWithFallback<unknown>([
-      `/account/shops/${shopId}/reviews/`,
-      `/home/shops/${shopId}/reviews/`,
-    ]);
+    const payload = await apiRequest<unknown>(`/account/shops/${shopId}/reviews/`);
     const normalized = normalizeListResponse<unknown>(payload);
     return normalized.data.map(toReview);
   } catch {
@@ -724,10 +1859,7 @@ export async function getShopReviews(shopId: string): Promise<ShopReview[]> {
 
 export async function getSimilarShops(shopId: string): Promise<Shop[]> {
   try {
-    const payload = await requestWithFallback<unknown>([
-      `/account/shops/${shopId}/similar/`,
-      `/home/shops/${shopId}/similar/`,
-    ]);
+    const payload = await apiRequest<unknown>(`/account/shops/${shopId}/similar/`);
     const normalized = normalizeListResponse<unknown>(payload);
     return normalized.data.map(toShop);
   } catch {
@@ -761,7 +1893,7 @@ export type MeResponse = {
 };
 
 /**
- * Returns a map of fieldName → first error string extracted from a DRF response.
+ * Returns a map of fieldName -> first error string extracted from a DRF response.
  * Exported so UI components can highlight specific fields.
  */
 export function extractDRFFieldErrors(data: unknown): Record<string, string> {
@@ -955,7 +2087,7 @@ export async function authActivate(uidb64: string, token: string): Promise<{ det
   const d = data as { access?: string; refresh?: string; detail: string };
   if (d.access) document.cookie = `access_token=${encodeURIComponent(d.access)}; Max-Age=86400; path=/; SameSite=Lax`;
   if (d.refresh) document.cookie = `refresh_token=${encodeURIComponent(d.refresh)}; Max-Age=${30 * 86400}; path=/; SameSite=Lax`;
-  // New accounts always start with pending role — set the cookie so middleware can enforce choose-role
+  // New accounts always start with pending role; set the cookie so middleware can enforce choose-role
   document.cookie = `role=pending; Max-Age=86400; path=/; SameSite=Lax`;
   return data as { detail: string };
 }
@@ -1117,7 +2249,11 @@ export async function deleteShopSubscription(id: string): Promise<void> {
 
 export async function getShopNotifications(): Promise<ShopNotification[]> {
   try {
-    const raw = await apiRequest<unknown>(apiPaths.shopNotifications);
+    const raw = await requestWithFallback<unknown>([
+      apiPaths.shopNotifications,
+      apiPaths.homeShopNotifications,
+      apiPaths.wishlistNotifications,
+    ]);
     return normalizeListResponse<ShopNotification>(raw).data;
   } catch {
     return [];
@@ -1125,11 +2261,31 @@ export async function getShopNotifications(): Promise<ShopNotification[]> {
 }
 
 export async function getShopNotification(id: string): Promise<ShopNotification> {
-  return apiRequest<ShopNotification>(apiPaths.shopNotificationById(id));
+  let lastError: unknown;
+  for (const path of [apiPaths.shopNotificationById(id), apiPaths.wishlistNotificationById(id)]) {
+    try {
+      return await apiRequest<ShopNotification>(path);
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  throw lastError ?? new Error('Notification not found');
 }
 
 export async function markNotificationRead(id: string): Promise<ShopNotification> {
-  return apiRequest<ShopNotification>(apiPaths.shopNotificationById(id), { method: 'PATCH', body: { is_read: true } });
+  let lastError: unknown;
+  for (const path of [apiPaths.shopNotificationById(id), apiPaths.wishlistNotificationById(id)]) {
+    try {
+      return await apiRequest<ShopNotification>(path, { method: 'PATCH', body: { is_read: true } });
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  throw lastError ?? new Error('Unable to mark notification read');
 }
 
 export async function markAllNotificationsRead(notifications: ShopNotification[]): Promise<void> {
@@ -1139,7 +2295,43 @@ export async function markAllNotificationsRead(notifications: ShopNotification[]
 }
 
 export async function deleteShopNotification(id: string): Promise<void> {
-  await apiRequest<void>(apiPaths.shopNotificationById(id), { method: 'DELETE' });
+  let lastError: unknown;
+  for (const path of [apiPaths.shopNotificationById(id), apiPaths.wishlistNotificationById(id)]) {
+    try {
+      await apiRequest<void>(path, { method: 'DELETE' });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  if (lastError) throw lastError;
+}
+
+export async function getWishlistNotifications() {
+  const raw = await apiRequest<unknown>(apiPaths.wishlistNotifications);
+  return normalizeListResponse<unknown>(raw);
+}
+
+export async function createWishlistNotification(payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistNotifications, { method: 'POST', body: payload });
+}
+
+export async function getWishlistNotification(id: string) {
+  return apiRequest<unknown>(apiPaths.wishlistNotificationById(id));
+}
+
+export async function updateWishlistNotification(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistNotificationById(id), { method: 'PUT', body: payload });
+}
+
+export async function patchWishlistNotification(id: string, payload: Record<string, unknown>) {
+  return apiRequest<unknown>(apiPaths.wishlistNotificationById(id), { method: 'PATCH', body: payload });
+}
+
+export async function deleteWishlistNotification(id: string) {
+  return apiRequest<unknown>(apiPaths.wishlistNotificationById(id), { method: 'DELETE' });
 }
 
 // ---- Admin Shop CRUD ----

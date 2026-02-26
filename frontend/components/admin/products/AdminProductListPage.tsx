@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ArrowUpDown, ChevronLeft, ChevronRight, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import type { Session } from '@/lib/auth/session';
+import { duplicateFoodcreateProduct } from '@/lib/api/endpoints';
 import type { Product } from '@/types/api';
 import { cn } from '@/lib/utils/cn';
 import { formatCurrency } from '@/lib/utils/money';
@@ -49,7 +50,11 @@ function statusPillClass(status?: string | null) {
 
 async function deleteProductRequest(productId: string) {
   const csrf = getCookie('csrftoken');
-  const urls = [`/api/products/${productId}/`, backendUrl(`/foodcreate/productss/${productId}/`)];
+  const urls = [
+    `/api/products/${productId}/`,
+    backendUrl(`/foodcreate/productss/${productId}/`),
+    backendUrl(`/home/ads/${productId}/delete/`),
+  ];
 
   let lastError: unknown;
 
@@ -93,6 +98,7 @@ export function AdminProductListPage({
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'id', direction: 'asc' });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const filtered = useMemo(() => {
@@ -169,6 +175,20 @@ export function AdminProductListPage({
       setError('Unable to delete product right now. Please try again.');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const onDuplicate = async (product: ProductRow) => {
+    if (!canManageProduct(product)) return;
+    setDuplicatingId(product.id);
+    setError('');
+    try {
+      const duplicated = await duplicateFoodcreateProduct(product.id);
+      setRows((current) => [duplicated as ProductRow, ...current]);
+    } catch {
+      setError('Unable to duplicate product right now. Please try again.');
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -269,8 +289,9 @@ export function AdminProductListPage({
             <tbody className="divide-y divide-brand-border bg-white">
               {paginated.length ? (
                 paginated.map((product) => {
-                  const canManage = canManageProduct(product);
-                  const isDeleting = deletingId === product.id;
+	                  const canManage = canManageProduct(product);
+	                  const isDeleting = deletingId === product.id;
+	                  const isDuplicating = duplicatingId === product.id;
                   return (
                     <tr key={product.id} className="align-middle hover:bg-slate-50/70">
                       <td className="px-4 py-4 text-sm font-medium text-brand-text">{product.id || '--'}</td>
@@ -317,6 +338,14 @@ export function AdminProductListPage({
                                 <Pencil className="h-3.5 w-3.5" />
                                 Edit
                               </Link>
+                              <button
+                                type="button"
+                                onClick={() => void onDuplicate(product)}
+                                disabled={isDuplicating}
+                                className="inline-flex h-9 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isDuplicating ? 'Duplicating...' : 'Duplicate'}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => void onDelete(product)}
@@ -378,4 +407,3 @@ export function AdminProductListPage({
     </div>
   );
 }
-

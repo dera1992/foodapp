@@ -6,6 +6,7 @@ import {
   getShopProducts,
   getShopReviews,
   getSimilarShops,
+  getThreads,
 } from '@/lib/api/endpoints';
 import { getSession } from '@/lib/auth/session';
 
@@ -29,6 +30,13 @@ export default async function ShopDetailsPage({
 
   const products = productsResult.data;
   const isOwner = session.isAuthenticated && session.role === 'shop';
+  const ownerUnreadMessages = isOwner
+    ? await getThreads()
+        .then((result) =>
+          result.data.reduce((sum, thread) => sum + (thread.unreadCount ?? 0), 0),
+        )
+        .catch(() => 0)
+    : 0;
 
   return (
     <>
@@ -47,6 +55,8 @@ export default async function ShopDetailsPage({
         reviews={reviews}
         similarShops={similarShops}
         isOwner={isOwner}
+        isAuthenticated={session.isAuthenticated}
+        ownerUnreadMessages={ownerUnreadMessages}
       />
     </>
   );

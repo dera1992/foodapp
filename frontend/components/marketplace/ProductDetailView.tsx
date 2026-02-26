@@ -3,9 +3,20 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import type { Product } from '@/types/api';
-import { addToCart, addWishlist, subscribeShop } from '@/lib/api/endpoints';
-
-type Props = { product: Product; related: Product[] };
+import { StartChatDialog } from '@/components/chat/StartChatDialog';
+import { addToCart, addWishlist, removeWishlistByProduct, subscribeShop } from '@/lib/api/endpoints';
+type Props = {
+  product: Product;
+  related: Product[];
+  isAuthenticated: boolean;
+  canSubscribeToShop?: boolean;
+  chat?: {
+    shopId: string;
+    shopName: string;
+    receiverUserId?: string;
+    products: Array<{ id: string; name: string }>;
+  } | null;
+};
 type Tab = 'description' | 'nutrition' | 'reviews';
 
 // ---- Inline SVG icons ----
@@ -84,10 +95,28 @@ function IconMinus() {
 function IconArrowRight() {
   return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>;
 }
+function IconImage() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path d="M21 16l-5-5-8 8" />
+    </svg>
+  );
+}
+function IconInfo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
 
 // ---- Helpers ----
 function formatPrice(value: number) {
-  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `N${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 type ExpiryUrgency = 'expired' | 'today' | 'soon' | 'week' | 'normal';
@@ -98,8 +127,8 @@ function getExpiryInfo(expiresOn: string | null | undefined): { label: string; u
   const diffMs = exp.getTime() - now.getTime();
   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return { label: 'This product has expired', urgency: 'expired' };
-  if (diffDays === 0) return { label: 'Expires today — pick up fast!', urgency: 'today' };
-  if (diffDays <= 2) return { label: `Expires in ${diffDays} day${diffDays === 1 ? '' : 's'} — act quickly!`, urgency: 'soon' };
+  if (diffDays === 0) return { label: 'Expires today - pick up fast!', urgency: 'today' };
+  if (diffDays <= 2) return { label: `Expires in ${diffDays} day${diffDays === 1 ? '' : 's'} - act quickly!`, urgency: 'soon' };
   if (diffDays <= 7) return { label: `Expires in ${diffDays} days`, urgency: 'week' };
   const fmt = exp.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return { label: `Best before ${fmt}`, urgency: 'normal' };
@@ -148,7 +177,7 @@ function ProductGallery({ images, name, expiresOn, discountPercent }: {
         ) : null}
         {images[selected]
           ? <img src={images[selected]} alt={name} className="pd-gallery-img" />
-          : <div className="pd-gallery-placeholder">🍃</div>
+          : <div className="pd-gallery-placeholder"><IconImage /></div>
         }
       </div>
       {images.length > 1 && (
@@ -204,7 +233,7 @@ function ReviewsTab({ reviewCount }: { reviewCount?: number | null }) {
     <div className="pd-reviews">
       <div className="pd-review-summary">
         <div className="pd-review-score">
-          <div className="pd-review-big">{avgRating > 0 ? avgRating.toFixed(1) : '—'}</div>
+          <div className="pd-review-big">{avgRating > 0 ? avgRating.toFixed(1) : '-'}</div>
           <div className="pd-stars-row">
             {[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= Math.round(avgRating)} />)}
           </div>
@@ -216,7 +245,9 @@ function ReviewsTab({ reviewCount }: { reviewCount?: number | null }) {
             const pct = totalRatings ? Math.round((count / totalRatings) * 100) : 0;
             return (
               <div key={star} className="pd-bar-row">
-                <span className="pd-bar-label">{star}★</span>
+                <span className="pd-bar-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                  {star} <IconStar filled />
+                </span>
                 <div className="pd-bar-track"><div className="pd-bar-fill" style={{ width: `${pct}%` }} /></div>
                 <span className="pd-bar-count">{count}</span>
               </div>
@@ -233,18 +264,20 @@ function ReviewsTab({ reviewCount }: { reviewCount?: number | null }) {
           <form onSubmit={handleSubmit} className="pd-wr-form">
             <div className="pd-wr-stars">
               {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} type="button" className={`pd-wr-star${form.rating >= n ? ' lit' : ''}`} onClick={() => setForm((f) => ({ ...f, rating: n }))}>★</button>
+                <button key={n} type="button" className={`pd-wr-star${form.rating >= n ? ' lit' : ''}`} onClick={() => setForm((f) => ({ ...f, rating: n }))}>
+                  <IconStar filled={form.rating >= n} />
+                </button>
               ))}
             </div>
             <textarea
               className="pd-wr-textarea"
-              placeholder="Share your thoughts about this product…"
+              placeholder="Share your thoughts about this product..."
               value={form.body}
               onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
               rows={4}
             />
             <button type="submit" className="pd-wr-submit" disabled={isPending || !form.body.trim()}>
-              {isPending ? 'Submitting…' : 'Submit Review'}
+              {isPending ? 'Submitting...' : 'Submit Review'}
             </button>
           </form>
         )}
@@ -283,7 +316,7 @@ function RelatedCard({ product, index }: { product: Product; index: number }) {
   return (
     <Link href={`/products/${product.id}`} className="pd-related-card" style={{ animationDelay: `${index * 0.07}s` }}>
       <div className="pd-rc2-img">
-        {product.image ? <img src={product.image} alt={product.name} /> : <span className="pd-rc2-emoji">🍃</span>}
+        {product.image ? <img src={product.image} alt={product.name} /> : <span className="pd-rc2-emoji"><IconImage /></span>}
         {discount ? <div className="pd-rc2-badge">{discount}% OFF</div> : null}
       </div>
       <div className="pd-rc2-body">
@@ -302,7 +335,13 @@ function RelatedCard({ product, index }: { product: Product; index: number }) {
 }
 
 // ---- Main export ----
-export function ProductDetailView({ product, related }: Props) {
+export function ProductDetailView({
+  product,
+  related,
+  chat,
+  isAuthenticated,
+  canSubscribeToShop = true,
+}: Props) {
   const [qty, setQty] = useState(1);
   const [wishlisted, setWishlisted] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -328,7 +367,7 @@ export function ProductDetailView({ product, related }: Props) {
     start(async () => {
       try {
         await addToCart(product.id, qty);
-        setNotice({ msg: `${qty} × ${product.name} added to cart.`, ok: true });
+        setNotice({ msg: `${qty} x ${product.name} added to cart.`, ok: true });
       } catch {
         setNotice({ msg: 'Could not add to cart. Please try again.', ok: false });
       }
@@ -339,9 +378,20 @@ export function ProductDetailView({ product, related }: Props) {
     const next = !wishlisted;
     setWishlisted(next);
     if (next) {
-      addWishlist(product.id).catch(() => setWishlisted(false));
-      setNotice({ msg: 'Added to wishlist!', ok: true });
+      addWishlist(product.id)
+        .then(() => setNotice({ msg: 'Added to wishlist!', ok: true }))
+        .catch(() => {
+          setWishlisted(false);
+          setNotice({ msg: 'Could not update wishlist right now.', ok: false });
+        });
+      return;
     }
+    removeWishlistByProduct(product.id)
+      .then(() => setNotice({ msg: 'Removed from wishlist.', ok: true }))
+      .catch(() => {
+        setWishlisted(true);
+        setNotice({ msg: 'Could not update wishlist right now.', ok: false });
+      });
   };
 
   const onSubscribe = () => {
@@ -416,23 +466,59 @@ export function ProductDetailView({ product, related }: Props) {
           <div className="pd-action-row">
             <QuantityStepper value={qty} onChange={setQty} />
             <button type="button" className="pd-cart-btn" onClick={onAddToCart} disabled={isPending}>
-              <IconCart /> {isPending ? 'Adding…' : 'Add to Cart'}
+              <IconCart /> {isPending ? 'Adding...' : 'Add to Cart'}
             </button>
             <button type="button" className={`pd-wish-btn${wishlisted ? ' wishlisted' : ''}`} onClick={onWishlist} aria-label="Wishlist">
               <IconHeart filled={wishlisted} />
             </button>
           </div>
 
+          {chat ? (
+            <div style={{ marginTop: 12 }}>
+              {isAuthenticated ? (
+                <StartChatDialog
+                  shopId={chat.shopId}
+                  shopName={chat.shopName}
+                  receiverUserId={chat.receiverUserId}
+                  products={chat.products}
+                  defaultProductId={product.id}
+                  triggerLabel="Start chat with shop"
+                  triggerClassName="pd-subscribe-btn"
+                />
+              ) : (
+                <Link href="/login" className="pd-subscribe-btn">
+                  Login to chat
+                </Link>
+              )}
+              <div style={{ marginTop: 8 }}>
+                <Link
+                  href={`/messages?shop=${encodeURIComponent(chat.shopId)}&product=${encodeURIComponent(product.id)}`}
+                  className="pd-review-lnk"
+                >
+                  Open chat composer in inbox
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
           {notice && <div className={`pd-notice${notice.ok ? ' ok' : ' err'}`}>{notice.msg}</div>}
 
-          <button
-            type="button"
-            className={`pd-subscribe-btn${subscribed ? ' subscribed' : ''}`}
-            disabled={!product.shopId || subscribed}
-            onClick={onSubscribe}
-          >
-            <IconBell /> {subscribed ? 'Subscribed ✓' : 'Subscribe to this Shop'}
-          </button>
+          {canSubscribeToShop ? (
+            isAuthenticated ? (
+              <button
+                type="button"
+                className={`pd-subscribe-btn${subscribed ? ' subscribed' : ''}`}
+                disabled={!product.shopId || subscribed}
+                onClick={onSubscribe}
+              >
+                <IconBell /> {subscribed ? 'Subscribed' : 'Subscribe to this Shop'}
+              </button>
+            ) : (
+              <Link href="/login" className="pd-subscribe-btn">
+                <IconBell /> Login to subscribe
+              </Link>
+            )
+          ) : null}
 
           <div className="pd-divider" />
 
@@ -513,7 +599,7 @@ export function ProductDetailView({ product, related }: Props) {
           {activeTab === 'nutrition' && (
             <div className="pd-nutrition">
               <p className="pd-nutrition-note">Nutritional information is provided by the seller. Always check packaging for accurate details.</p>
-              <div className="pd-nutrition-placeholder"><span>🥗</span><p>Nutrition details not yet available for this product.</p></div>
+              <div className="pd-nutrition-placeholder"><span><IconInfo /></span><p>Nutrition details not yet available for this product.</p></div>
             </div>
           )}
           {activeTab === 'reviews' && <ReviewsTab reviewCount={product.reviewCount} />}
@@ -532,8 +618,8 @@ export function ProductDetailView({ product, related }: Props) {
           </div>
         ) : (
           <div className="pd-related-empty">
-            <span>🏪</span>
-            <p>No related products found. <Link href="/products">Browse all products →</Link></p>
+            <span><IconStore /></span>
+            <p>No related products found. <Link href="/products">Browse all products</Link></p>
           </div>
         )}
       </div>

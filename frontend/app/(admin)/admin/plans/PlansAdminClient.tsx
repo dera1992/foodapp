@@ -229,7 +229,7 @@ export function PlansAdminClient({ initialPlans }: Props) {
                     )}
                   </td>
                   <td className="py-3 px-4 font-semibold text-brand-text">
-                    {plan.price === 0 ? 'Free' : `£${plan.price.toFixed(2)}/mo`}
+                    {Number(plan.price) === 0 ? 'Free' : `£${Number(plan.price).toFixed(2)}/mo`}
                   </td>
                   <td className="py-3 px-4 text-brand-muted">
                     {plan.product_limit != null ? plan.product_limit : 'Unlimited'}

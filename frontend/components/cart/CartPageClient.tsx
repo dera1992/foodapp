@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState, useTransition } from 'react';
 import type { BudgetSummary, Cart, OrderSummary } from '@/types/api';
-import { applyCoupon, getCart, removeCartItem, updateCartItem } from '@/lib/api/endpoints';
+import { addToCart, applyCoupon, clearCart, getCart, removeCartItem, removeSingleCartItem, updateCartItem } from '@/lib/api/endpoints';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { CartTable } from '@/components/cart/CartTable';
 import { CartSummaryCard } from '@/components/cart/CartSummaryCard';
@@ -18,6 +18,7 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
   const [cart, setCart] = useState(initialCart);
   const [couponCode, setCouponCode] = useState('');
   const [couponFeedback, setCouponFeedback] = useState<string | null>(null);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const itemCount = cart.count || cart.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -34,6 +35,8 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
 
   const onQuantityChange = (productId: string, quantity: number) => {
     if (quantity < 1) return;
+    const currentItem = cart.items.find((item) => item.productId === productId);
+    const previousQty = currentItem?.quantity ?? 1;
     setCart((prev) => ({
       ...prev,
       items: prev.items.map((item) =>
@@ -43,9 +46,16 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
 
     startTransition(async () => {
       try {
-        const next = await updateCartItem(productId, quantity);
+        const next =
+          quantity === previousQty + 1
+            ? await addToCart(productId, 1)
+            : quantity === previousQty - 1
+              ? await removeSingleCartItem(productId)
+              : await updateCartItem(productId, quantity);
         setCart(next);
+        setCartNotice(null);
       } catch {
+        setCartNotice('Could not update cart item.');
         onSync();
       }
     });
@@ -57,7 +67,24 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
       try {
         const next = await removeCartItem(productId);
         setCart(next);
+        setCartNotice(null);
       } catch {
+        setCartNotice('Could not remove item.');
+        onSync();
+      }
+    });
+  };
+
+  const onClearCart = () => {
+    if (!cart.items.length) return;
+    setCart({ ...cart, items: [], count: 0, subtotal: 0, total: 0, savings: 0 });
+    startTransition(async () => {
+      try {
+        const next = await clearCart();
+        setCart(next);
+        setCartNotice('Cart cleared.');
+      } catch {
+        setCartNotice('Could not clear cart.');
         onSync();
       }
     });
@@ -107,6 +134,14 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
         <div>
           <CartTable items={cart.items} onQuantityChange={onQuantityChange} onRemove={onRemove} loading={isPending} />
           {cart.items.length > 0 ? (
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-border bg-white p-4">
+              <p className="text-sm text-brand-muted">Manage all items in your basket.</p>
+              <button type="button" className="bf-budget-btn is-amber is-sm" onClick={onClearCart} disabled={isPending}>
+                Clear cart
+              </button>
+            </div>
+          ) : null}
+          {cart.items.length > 0 ? (
             <section className="bf-coupon-card">
               <h3>Discount Coupon Code</h3>
               <form className="bf-coupon-row" onSubmit={onApplyCoupon}>
@@ -121,7 +156,10 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
                 </button>
               </form>
               {couponFeedback ? <p className="mt-3 text-sm text-brand-muted">{couponFeedback}</p> : null}
+              {cartNotice ? <p className="mt-2 text-sm text-brand-muted">{cartNotice}</p> : null}
             </section>
+          ) : cartNotice ? (
+            <p className="mt-3 text-sm text-brand-muted">{cartNotice}</p>
           ) : null}
         </div>
         <aside className="bf-cart-side">

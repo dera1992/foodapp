@@ -32,6 +32,12 @@
   opacity: 0.7;
 }
 
+.crumbSepIcon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
 .currentCrumb {
   color: #2d7a3a;
   font-weight: 700;
@@ -230,6 +236,135 @@
   grid-template-columns: 1fr 1fr 1fr;
 }
 
+.inlineManageRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -10px;
+  margin-bottom: 14px;
+}
+
+.inlineManageInput {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px solid #dde8de;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #1c2b1e;
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.inlineManageInput:focus {
+  border-color: #2d7a3a;
+  box-shadow: 0 0 0 3px rgba(45, 122, 58, 0.08);
+}
+
+.inlineManageInput:disabled {
+  background: #f4f7f4;
+  color: #8a998c;
+  cursor: not-allowed;
+}
+
+.inlineManageButton {
+  border: 1.5px solid #b7e0bf;
+  background: #e8f5eb;
+  color: #1a4d24;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.inlineManageButton:hover:not(:disabled) {
+  background: #d8efde;
+  border-color: #4caf63;
+}
+
+.inlineManageButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.taxonomyError {
+  margin-top: -4px;
+  margin-bottom: 6px;
+  color: #991b1b;
+  font-size: 0.78rem;
+}
+
+.taxonomyList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.taxonomyChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #dde8de;
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
+}
+
+.taxonomyChipSelected {
+  border-color: #b7e0bf;
+  background: #f2fbf4;
+}
+
+.taxonomyChipLabel {
+  border: none;
+  background: transparent;
+  color: #1c2b1e;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.taxonomyChipAction {
+  border: none;
+  background: #eef2ef;
+  color: #465447;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.taxonomyChipAction:hover:not(:disabled) {
+  background: #e2e9e2;
+}
+
+.taxonomyChipAction:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.taxonomyChipDelete {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.taxonomyChipDelete:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.taxonomyEmpty {
+  font-size: 0.76rem;
+  color: #6b7b6d;
+  padding: 4px 2px;
+}
+
 .priceWrap {
   position: relative;
 }
@@ -414,6 +549,44 @@
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
+}
+
+.imageActionsRow {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.galleryHint {
+  font-size: 0.74rem;
+  color: #6b7b6d;
+}
+
+.imageStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.imageStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #dde8de;
+  background: #f4f7f4;
+  color: #465447;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.imageStatusBadgePending {
+  border-color: #b7e0bf;
+  background: #e8f5eb;
+  color: #1a4d24;
 }
 
 .previewItem {

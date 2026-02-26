@@ -5,8 +5,7 @@ export function FeatureStrip() {
   return (
     <div className="feature-strip">
       <div className="feature-strip-inner">
-
-        <Link href="/budget" className="fs-item">
+        <Link href="/budget/create" className="fs-item">
           <div className="fs-icon fs-amber">💰</div>
           <div className="fs-text">
             <div className="fs-title">Budget Planner</div>
@@ -17,7 +16,7 @@ export function FeatureStrip() {
           </button>
         </Link>
 
-        <Link href="/account/shop/products/add" className="fs-item">
+        <Link href="/admin/products/new" className="fs-item">
           <div className="fs-icon fs-green">🏪</div>
           <div className="fs-text">
             <div className="fs-title">Shop Owner?</div>
@@ -38,7 +37,6 @@ export function FeatureStrip() {
             Track order <ArrowRight size={12} />
           </button>
         </Link>
-
       </div>
     </div>
   );

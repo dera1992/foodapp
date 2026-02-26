@@ -1,12 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import { ApiError } from '@/lib/api/client';
+import { createComment, type ApiComment } from '@/lib/api/endpoints';
 
 interface CommentFormProps {
   slug: string;
+  postId?: number;
+  onCreated?: (comment: ApiComment) => void;
 }
 
-export function CommentForm({ slug }: CommentFormProps) {
+export function CommentForm({ slug, postId, onCreated }: CommentFormProps) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,18 +23,27 @@ export function CommentForm({ slug }: CommentFormProps) {
     setError('');
     setSuccess(false);
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api';
-      const res = await fetch(`${API_BASE}/blog/${slug}/comments/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ body: text }),
-      });
-      if (!res.ok) throw new Error('Failed to post comment');
+      if (postId != null) {
+        const created = await createComment({ post: postId, content: text.trim() });
+        onCreated?.(created);
+      } else {
+        const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api';
+        const res = await fetch(`${API_BASE}/blog/${slug}/comments/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ body: text }),
+        });
+        if (!res.ok) throw new Error('Failed to post comment');
+      }
       setSuccess(true);
       setText('');
-    } catch {
-      setError('Could not post comment. Please try again.');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setError('Please sign in to post a comment.');
+      } else {
+        setError('Could not post comment. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

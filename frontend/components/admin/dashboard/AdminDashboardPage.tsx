@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -476,7 +476,7 @@ export function AdminDashboardPage() {
                     <strong>{item.title}</strong>
                     <span>{item.subtitle}</span>
                   </div>
-                  <span className={styles.activityTime}>{relativeTime(item.timestamp)}</span>
+                  <span suppressHydrationWarning className={styles.activityTime}>{relativeTime(item.timestamp)}</span>
                 </div>
               ))}
             </div>

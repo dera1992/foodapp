@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ApiError } from '@/lib/api/client';
 import { createBudget } from '@/lib/api/endpoints';
 import { QuickChips } from '@/components/budget/QuickChips';
 import { VoiceButton } from '@/components/budget/VoiceButton';
@@ -159,8 +160,12 @@ export function BudgetFormCard() {
       });
       const target = created?.id ? `/budget-planner?budgetId=${encodeURIComponent(created.id)}` : '/budget-planner';
       router.push(target);
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setError('Please sign in to create a budget.');
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };
@@ -218,4 +223,3 @@ export function BudgetFormCard() {
     </article>
   );
 }
-

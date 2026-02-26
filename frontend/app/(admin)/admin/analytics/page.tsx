@@ -199,8 +199,8 @@ export default async function AdminAnalyticsPage() {
         <TableCard title="Customer Demographics" subtitle="By location" className="bg-white">
           {data.customerDemographics.length ? (
             <div className="space-y-3">
-              {data.customerDemographics.map((row) => (
-                <div key={row.city}>
+              {data.customerDemographics.map((row, i) => (
+                <div key={row.city ?? i}>
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-brand-text">{row.city}</p>
                     <p className="font-serif text-base font-bold text-blue-700">{row.customers}</p>

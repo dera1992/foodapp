@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { ProductDetailView } from '@/components/marketplace/ProductDetailView';
-import { getProduct, getProducts } from '@/lib/api/endpoints';
+import { getProduct, getProducts, getShop, getShopProducts } from '@/lib/api/endpoints';
+import { getSession } from '@/lib/auth/session';
 
 export default async function ProductPage({ params }: { params: Promise<{ productId: string }> }) {
   const { productId } = await params;
@@ -18,6 +19,30 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
     })
     .catch(() => []);
 
+  const session = await getSession();
+  let shop: Awaited<ReturnType<typeof getShop>> | null = null;
+  let shopProductsResult: { data: Array<{ id: string; name: string }> } = { data: [] };
+
+  if (product.shopId) {
+    [shop, shopProductsResult] = await Promise.all([
+      getShop(product.shopId).catch(() => null),
+      getShopProducts(product.shopId).catch(() => ({ data: [] as Array<{ id: string; name: string }> })),
+    ]);
+  }
+
+  const chat =
+    product.shopId && shop
+      ? {
+          shopId: product.shopId,
+          shopName: shop.name || product.shopName || 'Shop',
+          receiverUserId: shop.ownerUserId,
+          products: shopProductsResult.data.map((item) => ({ id: item.id, name: item.name }))
+        }
+      : null;
+
+  const canSubscribeToShop =
+    !(session.isAuthenticated && session.role === 'shop' && shop?.ownerUserId && session.userId === shop.ownerUserId);
+
   return (
     <>
       <div className="pd-breadcrumb-wrap">
@@ -29,7 +54,13 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
           ]}
         />
       </div>
-      <ProductDetailView product={product} related={related} />
+      <ProductDetailView
+        product={product}
+        related={related}
+        chat={chat}
+        isAuthenticated={session.isAuthenticated}
+        canSubscribeToShop={canSubscribeToShop}
+      />
     </>
   );
 }
