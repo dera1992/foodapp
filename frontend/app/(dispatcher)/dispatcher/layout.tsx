@@ -1,19 +1,20 @@
-'use client';
+import { getMyDispatcherProfile } from '@/lib/api/endpoints';
+import { DispatcherPortalLayout } from '@/components/dispatcher-portal/DispatcherPortalLayout';
 
-import { useState } from 'react';
-import { DispatcherSidebar } from '@/components/dispatcher-portal/DispatcherSidebar';
-import { DispatcherTopbar } from '@/components/dispatcher-portal/DispatcherTopbar';
+export default async function DispatcherLayout({ children }: { children: React.ReactNode }) {
+  const profile = await getMyDispatcherProfile().catch(() => null);
 
-export default function DispatcherLayout({ children }: { children: React.ReactNode }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const name = profile?.full_name ?? 'Dispatcher';
+  const initials = name
+    .split(' ')
+    .map((w: string) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <div className="bf-admin-layout">
-      <DispatcherSidebar open={isSidebarOpen} />
-      <div className="bf-admin-main">
-        <DispatcherTopbar onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)} />
-        <main className="bf-admin-content">{children}</main>
-      </div>
-    </div>
+    <DispatcherPortalLayout name={name} initials={initials}>
+      {children}
+    </DispatcherPortalLayout>
   );
 }

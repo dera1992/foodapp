@@ -8,11 +8,12 @@ export type Session = {
 
 export async function getSession(): Promise<Session> {
   const cookieStore = await cookies();
-  const token = cookieStore.get('access_token')?.value || cookieStore.get('sessionid')?.value;
+  const accessToken = cookieStore.get('access_token')?.value;
+  const refreshToken = cookieStore.get('refresh_token')?.value;
   const role = cookieStore.get('role')?.value as Session['role'];
 
   return {
-    isAuthenticated: Boolean(token),
+    isAuthenticated: Boolean(accessToken || refreshToken),
     role,
     userId: cookieStore.get('user_id')?.value
   };

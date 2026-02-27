@@ -13,6 +13,7 @@ export class ApiError extends Error {
 }
 
 export const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+const API_ROOT_URL = BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
@@ -87,19 +88,41 @@ async function getAccessToken(): Promise<string | null> {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+async function getServerCookieHeader(): Promise<string | null> {
+  if (typeof window !== 'undefined') return null;
+  try {
+    const { cookies } = await import('next/headers');
+    const store = await cookies();
+    const all = store.getAll();
+    if (!all.length) return null;
+    return all.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
+  } catch {
+    return null;
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, headers, cache = 'no-store', next } = options;
+  const requestUrl =
+    path.startsWith('http://') || path.startsWith('https://')
+      ? path
+      : path.startsWith('/api/')
+        ? `${API_ROOT_URL}${path}`
+        : `${BASE_URL}${path}`;
 
   const token = await getAccessToken();
+  const serverCookieHeader = await getServerCookieHeader();
   const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const cookieHeader: Record<string, string> = serverCookieHeader ? { Cookie: serverCookieHeader } : {};
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetch(requestUrl, {
     method,
     cache,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...authHeader,
+      ...cookieHeader,
       ...(headers as Record<string, string>),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -110,13 +133,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (response.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
-      const retryResponse = await fetch(`${BASE_URL}${path}`, {
+      const retryResponse = await fetch(requestUrl, {
         method,
         cache,
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${newToken}`,
+          ...cookieHeader,
           ...(headers as Record<string, string>),
         },
         body: body ? JSON.stringify(body) : undefined,

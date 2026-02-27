@@ -30,9 +30,15 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
 
 
 class ShopSerializer(serializers.ModelSerializer):
+    is_shop_open = serializers.SerializerMethodField()
+
     class Meta:
         model = Shop
         fields = '__all__'
+        read_only_fields = ['id_number']
+
+    def get_is_shop_open(self, obj):
+        return obj.is_shop_open()
 
 
 class ShopSubscriptionSerializer(serializers.ModelSerializer):

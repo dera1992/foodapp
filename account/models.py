@@ -4,6 +4,8 @@ from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from geopy.geocoders import Nominatim
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+import secrets
+import string
 
 if settings.GIS_ENABLED:
     from django.contrib.gis.db import models as gis_models
@@ -102,6 +104,7 @@ class Shop(models.Model):
         ("unit", "Unit"),
     )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="shops")
+    id_number = models.CharField(max_length=10, unique=True, blank=True, editable=False)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     address = models.CharField(max_length=255)
@@ -141,6 +144,13 @@ class Shop(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        if not self.id_number:
+            alphabet = string.ascii_uppercase + string.digits
+            while True:
+                candidate = "".join(secrets.choice(alphabet) for _ in range(10))
+                if not Shop.objects.filter(id_number=candidate).exists():
+                    self.id_number = candidate
+                    break
         if settings.GIS_ENABLED:
             if self.latitude is not None and self.longitude is not None:
                 self.location = Point(float(self.longitude), float(self.latitude), srid=4326)

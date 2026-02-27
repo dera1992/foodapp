@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { Product, Shop } from '@/types/api';
+import { addToCart, addWishlist, getWishlist, removeWishlistByProduct } from '@/lib/api/endpoints';
 import { HowItWorksCard } from '@/components/landing/HowItWorksCard';
 import { FeatureStrip } from '@/components/landing/FeatureStrip';
 
@@ -11,27 +12,27 @@ type Props = {
   products: Product[];
 };
 
-const categoryItems = [
-  { label: 'Vegetables', icon: '🥦', bg: '#dcfce7' },
-  { label: 'Fruits', icon: '🍎', bg: '#ffedd5' },
-  { label: 'Grains', icon: '🌾', bg: '#fef9c3' },
-  { label: 'Seafood', icon: '🐟', bg: '#dbeafe' },
-  { label: 'Spices', icon: '🌶️', bg: '#fee2e2' },
-  { label: 'Meats', icon: '🥩', bg: '#fee2e2' },
-  { label: 'Cooking Oil', icon: '🫒', bg: '#fef3c7' },
-  { label: 'Honey', icon: '🍯', bg: '#fefce8' },
-  { label: 'Eggs', icon: '🥚', bg: '#fef3c7' },
-  { label: 'Others', icon: '🧺', bg: '#f3f4f6' },
+const categoryItems: Array<{ label: string; icon: string; bg: string }> = [
+  { label: 'Vegetables', icon: '\u{1F966}', bg: '#dcfce7' },
+  { label: 'Fruits', icon: '\u{1F34E}', bg: '#ffedd5' },
+  { label: 'Grains', icon: '\u{1F33E}', bg: '#fef9c3' },
+  { label: 'Seafood', icon: '\u{1F41F}', bg: '#dbeafe' },
+  { label: 'Spices', icon: '\u{1F336}', bg: '#fee2e2' },
+  { label: 'Meats', icon: '\u{1F969}', bg: '#fee2e2' },
+  { label: 'Cooking Oil', icon: '\u{1FAD2}', bg: '#fef3c7' },
+  { label: 'Honey', icon: '\u{1F36F}', bg: '#fefce8' },
+  { label: 'Eggs', icon: '\u{1F95A}', bg: '#fef3c7' },
+  { label: 'Others', icon: '\u{1F3EA}', bg: '#f3f4f6' },
 ];
 
 const MINI_FALLBACK = [
-  { id: 'm1', name: 'Sourdough Loaf', price: 1.0, emoji: '🍞' },
-  { id: 'm2', name: 'Organic Milk', price: 0.9, emoji: '🥛' },
-  { id: 'm3', name: 'Cheddar 300g', price: 1.3, emoji: '🧀' },
-  { id: 'm4', name: 'Salad Mix', price: 0.6, emoji: '🥗' },
+  { id: 'm1', name: 'Sourdough Loaf', price: 1.0 },
+  { id: 'm2', name: 'Organic Milk', price: 0.9 },
+  { id: 'm3', name: 'Cheddar 300g', price: 1.3 },
+  { id: 'm4', name: 'Salad Mix', price: 0.6 },
 ];
 
-const MINI_EMOJIS = ['🍞', '🥛', '🧀', '🥗'];
+const MINI_ICONS = ['\u{1F35E}', '\u{1F95B}', '\u{1F9C0}', '\u{1F957}'];
 
 function asName(product: Product): string {
   return product.name || 'Fresh deal item';
@@ -42,12 +43,19 @@ function asShop(product: Product): string {
 }
 
 function asWeight(product: Product): string {
-  return product.category ? `${product.category} · Fresh` : '500g · Fresh';
+  return product.category ? `${product.category} - Fresh` : '500g - Fresh';
 }
 
 function savings(product: Product): number {
   if (!product.oldPrice || product.oldPrice <= product.price) return 0;
   return Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100);
+}
+
+function expiryRankDays(product: Product): number {
+  if (!product.expiresOn) return Number.MAX_SAFE_INTEGER;
+  const diff = new Date(product.expiresOn).getTime() - Date.now();
+  if (Number.isNaN(diff)) return Number.MAX_SAFE_INTEGER;
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 function expiryDays(product: Product): number {
@@ -84,16 +92,37 @@ export function LandingHome({ shops, products }: Props) {
   const [activeCategory, setActiveCategory] = useState('Vegetables');
   const [timer, setTimer] = useState({ h: 8, m: 42, s: 17 });
   const [added, setAdded] = useState<Record<string, boolean>>({});
+  const [adding, setAdding] = useState<Record<string, boolean>>({});
   const [radius, setRadius] = useState<number>(5);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [carouselIdx, setCarouselIdx] = useState(0);
+  const [wishlistedIds, setWishlistedIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setTimer(getTimer());
     const id = window.setInterval(() => setTimer(getTimer()), 1000);
     return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getWishlist()
+      .then((response) => {
+        if (!active) return;
+        const next: Record<string, boolean> = {};
+        for (const item of response.data) {
+          if (item?.id) next[String(item.id)] = true;
+        }
+        setWishlistedIds(next);
+      })
+      .catch(() => {
+        if (active) setWishlistedIds({});
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleLocate = () => {
@@ -140,20 +169,56 @@ export function LandingHome({ shops, products }: Props) {
   const carouselPrev = () => setCarouselIdx((i) => (i - 1 + nearbyShops.length) % nearbyShops.length);
   const carouselNext = () => setCarouselIdx((i) => (i + 1) % nearbyShops.length);
 
-  const featured = products[0];
-  const productGrid = useMemo(() => (products.length ? products.slice(0, 4) : []), [products]);
+  const rankedDeals = useMemo(() => {
+    return [...products].sort((a, b) => {
+      const discountDiff = savings(b) - savings(a);
+      if (discountDiff !== 0) return discountDiff;
+
+      const expiryDiff = expiryRankDays(a) - expiryRankDays(b);
+      if (expiryDiff !== 0) return expiryDiff;
+
+      const priceDiff = (a.price ?? 0) - (b.price ?? 0);
+      if (priceDiff !== 0) return priceDiff;
+
+      return String(a.id ?? '').localeCompare(String(b.id ?? ''));
+    });
+  }, [products]);
+
+  const featured = rankedDeals[0];
+  const productGrid = useMemo(() => (rankedDeals.length ? rankedDeals.slice(0, 4) : []), [rankedDeals]);
   const miniProducts = productGrid.slice(0, 4);
 
-  const onAdd = (id: string) => {
-    setAdded((prev) => ({ ...prev, [id]: true }));
-    window.setTimeout(() => {
+  const onAdd = async (id: string) => {
+    setAdding((prev) => ({ ...prev, [id]: true }));
+    try {
+      await addToCart(id, 1);
+      setAdded((prev) => ({ ...prev, [id]: true }));
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('cart:refresh'));
+      window.setTimeout(() => {
+        setAdded((prev) => ({ ...prev, [id]: false }));
+      }, 1200);
+    } catch {
       setAdded((prev) => ({ ...prev, [id]: false }));
-    }, 1200);
+    } finally {
+      setAdding((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const onToggleWishlist = async (productId: string) => {
+    const next = !wishlistedIds[productId];
+    setWishlistedIds((prev) => ({ ...prev, [productId]: next }));
+    try {
+      if (next) await addWishlist(productId);
+      else await removeWishlistByProduct(productId);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('wishlist:refresh'));
+    } catch {
+      setWishlistedIds((prev) => ({ ...prev, [productId]: !next }));
+    }
   };
 
   return (
     <>
-      {/* ── HERO ─────────────────────────────────── */}
+      {/*  HERO  */}
       <section className="hero">
         <div className="hero-noise" />
         <div className="hero-blobs" />
@@ -163,9 +228,9 @@ export function LandingHome({ shops, products }: Props) {
           <div className="hero-left">
             <div className="hero-content">
               <div className="hero-tags">
-                <span className="hero-tag">🥦 Cut food waste</span>
-                <span className="hero-tag">🏪 Local shops</span>
-                <span className="hero-tag">🔥 Fresh deals</span>
+                <span className="hero-tag">{'\u2702\uFE0F'} Cut food waste</span>
+                <span className="hero-tag">{'\u{1F4CD}'} Local shops</span>
+                <span className="hero-tag">{'\u{1F525}'} Fresh deals</span>
               </div>
               <h1>
                 Save more on <br />
@@ -177,13 +242,13 @@ export function LandingHome({ shops, products }: Props) {
                 unbeatable prices, and keep good food out of the bin.
               </p>
               <div className="hero-pills">
-                <span className="hero-pill">✓ Save up to 90%</span>
-                <span className="hero-pill">✓ Pick up fast</span>
-                <span className="hero-pill">✓ Verified sellers</span>
+                <span className="hero-pill">{'\u2713'} Save up to 90%</span>
+                <span className="hero-pill">{'\u2713'} Pick up fast</span>
+                <span className="hero-pill">{'\u2713'} Verified sellers</span>
               </div>
               <div className="hero-ctas">
                 <Link href="/products" className="btn-primary">
-                  Browse Deals →
+                  Browse Deals
                 </Link>
                 <Link href="/shops">
                   <button className="btn-secondary" type="button">
@@ -193,7 +258,7 @@ export function LandingHome({ shops, products }: Props) {
               </div>
             </div>
 
-            {/* Stats — inline below CTAs */}
+            {/* Stats  inline below CTAs */}
             <div className="hero-stats">
               <div className="stat-card">
                 <h3>2,400+</h3>
@@ -216,18 +281,25 @@ export function LandingHome({ shops, products }: Props) {
           <div className="hero-right-col">
             <HowItWorksCard />
 
-            {/* Mini product grid — live deal teaser */}
+            {/* Mini product grid  live deal teaser */}
             <div className="mini-grid">
               {(miniProducts.length ? miniProducts : MINI_FALLBACK).map(
                 (p, i) => (
-                  <Link key={p.id || i} href="/shops" className="mini-card">
-                    <div className="mini-emoji">{MINI_EMOJIS[i % 4]}</div>
+                  <Link
+                    key={p.id || i}
+                    href={p.id ? `/products/${String(p.id)}` : '/products'}
+                    className="mini-card"
+                  >
+                    <div className="mini-emoji">{MINI_ICONS[i % MINI_ICONS.length]}</div>
                     <div>
                       <div className="mini-name">
                         {p.name || MINI_FALLBACK[i]?.name}
                       </div>
-                      <div className="mini-price">
-                        £{(p.price ?? 0).toFixed(2)}
+                      <div className="mini-price-row">
+                        <div className="mini-price">£{(p.price ?? 0).toFixed(2)}</div>
+                        {'oldPrice' in p && typeof p.oldPrice === 'number' && p.oldPrice > (p.price ?? 0) ? (
+                          <div className="mini-price-old">£{p.oldPrice.toFixed(2)}</div>
+                        ) : null}
                       </div>
                     </div>
                   </Link>
@@ -238,25 +310,25 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
-      {/* ── FEATURE STRIP ────────────────────────── */}
+      {/*  FEATURE STRIP  */}
       <FeatureStrip />
 
-      {/* ── MARQUEE ──────────────────────────────── */}
+      {/*  MARQUEE  */}
       <div className="marquee-wrap">
         <div className="marquee-track">
           {[
-            "🥦 Fresh Vegetables",
-            "🍎 Seasonal Fruits",
-            "🥩 Quality Meats",
-            "🐟 Fresh Seafood",
-            "🌾 Wholegrains",
-            "🧂 Spices & More",
-            "🥦 Fresh Vegetables",
-            "🍎 Seasonal Fruits",
-            "🥩 Quality Meats",
-            "🐟 Fresh Seafood",
-            "🌾 Wholegrains",
-            "🧂 Spices & More",
+            "Fresh Vegetables",
+            "Seasonal Fruits",
+            "Quality Meats",
+            "Fresh Seafood",
+            "Wholegrains",
+            "Spices & More",
+            "Fresh Vegetables",
+            "Seasonal Fruits",
+            "Quality Meats",
+            "Fresh Seafood",
+            "Wholegrains",
+            "Spices & More",
           ].map((item, idx) => (
             <span key={`${item}-${idx}`} className="marquee-item">
               {item}
@@ -266,7 +338,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </div>
 
-      {/* ── SHOP BY CATEGORY ─────────────────────── */}
+      {/*  SHOP BY CATEGORY  */}
       <section className="section">
         <div className="section-header">
           <h2 className="section-title">
@@ -293,7 +365,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
-      {/* ── SHOP NEAR YOU ────────────────────────── */}
+      {/*  SHOP NEAR YOU  */}
       <div className="location-section">
         <div className="location-left">
           <h2>
@@ -311,9 +383,9 @@ export function LandingHome({ shops, products }: Props) {
               disabled={geoLoading}
             >
               {geoLoading
-                ? "Detecting…"
+                ? "Detecting..."
                 : userCoords
-                  ? "📍 Location set"
+                  ? "Location set"
                   : "Use my location"}
             </button>
             <div className="km-select-wrap">
@@ -331,7 +403,7 @@ export function LandingHome({ shops, products }: Props) {
               </select>
             </div>
             <Link href="/shops" className="btn-all-shops">
-              All shops →
+              All shops
             </Link>
           </div>
           {geoError && <p className="location-error">{geoError}</p>}
@@ -344,7 +416,7 @@ export function LandingHome({ shops, products }: Props) {
           {carouselShop ? (
             <div className="store-carousel">
               <div className="store-card">
-                <div className="store-img">{carouselShop.emoji ?? "🛒"}</div>
+                <div className="store-img">{carouselShop.emoji ?? '\u{1F3EA}'}</div>
                 <div className="store-info">
                   <h4>{carouselShop.name}</h4>
                   <div className="store-addr">
@@ -353,14 +425,12 @@ export function LandingHome({ shops, products }: Props) {
                       : (carouselShop.address ?? "Address unavailable")}
                   </div>
                   <div className="store-meta">
-                    <span className="badge-open">● Open</span>
+                    <span className="badge-open">{carouselShop.isOpen === false ? 'Closed' : 'Open'}</span>
                     {carouselShop.rating != null && (
-                      <span className="stars">
-                        ★ {carouselShop.rating.toFixed(1)}
-                      </span>
+                      <span className="stars">Rating {carouselShop.rating.toFixed(1)}</span>
                     )}
                     <span className="store-dist">
-                      📍{" "}
+                      {" "}
                       {carouselShop.distanceKm != null
                         ? carouselShop.distanceKm < 1
                           ? `${Math.round(carouselShop.distanceKm * 1000)} m away`
@@ -372,7 +442,7 @@ export function LandingHome({ shops, products }: Props) {
                   </div>
                 </div>
                 <Link href={`/shops/${carouselShop.id}`} className="btn-view">
-                  View Details →
+                  View Details
                 </Link>
               </div>
 
@@ -417,12 +487,12 @@ export function LandingHome({ shops, products }: Props) {
 
         <div className="map-placeholder">
           <div className="map-pin">
-            <p>📍 {carouselShop?.name ?? "Nearby store"}</p>
+            <p>{'\u{1F4CD}'} Nearby: {carouselShop?.name ?? "Nearby store"}</p>
           </div>
         </div>
       </div>
 
-      {/* ── WHY CHOOSE BUNCHFOOD ─────────────────── */}
+      {/*  WHY CHOOSE BUNCHFOOD  */}
       <section className="features-section">
         <div className="features-intro">
           <h2>Why choose bunchfood?</h2>
@@ -437,7 +507,7 @@ export function LandingHome({ shops, products }: Props) {
               className="feature-icon"
               style={{ background: "rgba(245,166,35,0.15)" }}
             >
-              💰
+              {'\u{1F4B0}'}
             </div>
             <h3>Shop surplus, save money</h3>
             <p>
@@ -450,7 +520,7 @@ export function LandingHome({ shops, products }: Props) {
               className="feature-icon"
               style={{ background: "rgba(76,175,99,0.2)" }}
             >
-              📍
+              {'\u{1F4CD}'}
             </div>
             <h3>Buy from nearby stores</h3>
             <p>Support small shops and get deliveries or pick-ups faster.</p>
@@ -460,7 +530,7 @@ export function LandingHome({ shops, products }: Props) {
               className="feature-icon"
               style={{ background: "rgba(52,211,153,0.15)" }}
             >
-              🌱
+              {'\u{1F33F}'}
             </div>
             <h3>Help reduce waste</h3>
             <p>Every purchase prevents good food from being thrown away.</p>
@@ -468,12 +538,12 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
-      {/* ── DEAL OF THE DAY ──────────────────────── */}
+      {/*  DEAL OF THE DAY  */}
       <section className="deal-section">
         <div className="section-header">
           <div>
             <p className="deal-label">
-              🔥 Limited picks — updated every morning
+              Limited picks - updated every morning
             </p>
             <h2 className="section-title">
               Deal of the <span>Day</span>
@@ -482,10 +552,10 @@ export function LandingHome({ shops, products }: Props) {
         </div>
         <div className="deal-banner">
           <div className="deal-content">
-            <div className="deal-badge">🔥 Today only</div>
+            <div className="deal-badge">Today only</div>
             <h2>{featured ? asName(featured) : "Organic Versatile Greens"}</h2>
             <p className="deal-shop">
-              📍 From {featured ? asShop(featured) : "rockflint · Bolton"}
+              From {featured ? asShop(featured) : "rockflint - Bolton"}
             </p>
             <div className="deal-price-row">
               <span className="price-new">
@@ -500,9 +570,9 @@ export function LandingHome({ shops, products }: Props) {
               </span>
             </div>
             <p className="deal-sub">
-              Best before today · Perfectly fresh · Pick up today
+              Best before today - Perfectly fresh - Pick up today
             </p>
-            <p className="deal-exp">⏰ Expires in:</p>
+            <p className="deal-exp">Expires in:</p>
             <div className="deal-timer">
               <div className="timer-block">
                 <span className="t-num">
@@ -523,12 +593,15 @@ export function LandingHome({ shops, products }: Props) {
                 <span className="t-label">Secs</span>
               </div>
             </div>
-            <button className="btn-deal" type="button">
+            <Link
+              href={featured?.id ? `/products/${String(featured.id)}` : '/products'}
+              className="btn-deal"
+            >
               Grab this deal
-            </button>
+            </Link>
           </div>
           <div className="deal-image-side">
-            <div className="deal-product-img">🥬</div>
+            <div className="deal-product-img">{'\u{1F96C}'}</div>
             <div className="deal-tags">
               <span className="deal-tag">Organic</span>
               <span className="deal-tag">Near expiry</span>
@@ -538,7 +611,7 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
-      {/* ── FRESH VEGETABLES ─────────────────────── */}
+      {/*  FRESH VEGETABLES  */}
       <section className="section section-products">
         <div className="section-header">
           <h2 className="section-title">
@@ -550,24 +623,40 @@ export function LandingHome({ shops, products }: Props) {
         </div>
         <div className="products-grid">
           {(productGrid.length ? productGrid : [
-            { id: 'a', name: 'Broccoli Crown', price: 0.4, oldPrice: 2, category: '500g · Organic' },
-            { id: 'b', name: 'Carrots Bunch', price: 0.45, oldPrice: 1.5, category: '1kg · Fresh' },
-            { id: 'c', name: 'Vine Tomatoes', price: 0.2, oldPrice: 2.2, category: '400g · Local' },
-            { id: 'd', name: 'Versatile Greens', price: 0.5, oldPrice: 2, category: '500g · Organic' },
+            { id: 'a', name: 'Broccoli Crown', price: 0.4, oldPrice: 2, category: '500g - Organic' },
+            { id: 'b', name: 'Carrots Bunch', price: 0.45, oldPrice: 1.5, category: '1kg - Fresh' },
+            { id: 'c', name: 'Vine Tomatoes', price: 0.2, oldPrice: 2.2, category: '400g - Local' },
+            { id: 'd', name: 'Versatile Greens', price: 0.5, oldPrice: 2, category: '500g - Organic' },
           ] as Product[]).map((product, idx) => (
             <div className="product-card" key={product.id || idx}>
-              <div className="product-img">
-                {["🥦", "🥕", "🍅", "🥬"][idx % 4]}
+              <Link
+                href={product.id ? `/products/${String(product.id)}` : '/products'}
+                className="product-img"
+                aria-label={`View ${asName(product)}`}
+              >
+                <button
+                  type="button"
+                  className="wishlist-card-heart"
+                  aria-label="Toggle wishlist"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (productGrid.length && product.id) void onToggleWishlist(String(product.id));
+                  }}
+                >
+                  {wishlistedIds[String(product.id || idx)] ? '\u2665' : '\u2661'}
+                </button>
+                {['\u{1F966}', '\u{1F955}', '\u{1F345}', '\u{1F96C}'][idx % 4]}
                 <span className="expiry-badge">
                   Exp: {expiryDays(product)} days
                 </span>
-                <span className="save-badge">
-                  Save {Math.max(savings(product), 70)}%
+                <span className="save-badge wishlist-save-badge">
+                  {savings(product)}% OFF
                 </span>
-              </div>
+              </Link>
               <div className="product-body">
                 <p className="product-store">{asShop(product)}</p>
-                <p className="product-name">{asName(product)}</p>
+                <Link href={product.id ? `/products/${String(product.id)}` : '/products'} className="product-name">{asName(product)}</Link>
                 <p className="product-weight">{asWeight(product)}</p>
                 <div className="product-footer">
                   <div className="prices">
@@ -575,18 +664,20 @@ export function LandingHome({ shops, products }: Props) {
                       £{(product.price ?? 0).toFixed(2)}
                     </span>
                     <span className="p-old">
-                      £
-                      {(
+                      £{(
                         (product.oldPrice ?? product.price ?? 0) as number
                       ).toFixed(2)}
                     </span>
                   </div>
                   <button
                     className="add-btn"
-                    onClick={() => onAdd(String(product.id || idx))}
+                    onClick={() => {
+                      if (product.id) void onAdd(String(product.id));
+                    }}
+                    disabled={!product.id || adding[String(product.id)]}
                     type="button"
                   >
-                    {added[String(product.id || idx)] ? "✓" : "+"}
+                    {product.id && adding[String(product.id)] ? "..." : added[String(product.id || idx)] ? "OK" : "+"}
                   </button>
                 </div>
               </div>

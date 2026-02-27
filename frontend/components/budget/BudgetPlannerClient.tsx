@@ -1,20 +1,25 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState, useTransition } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, Check, Copy, Lightbulb, ListChecks, Pencil, Plus, PlusCircle, Save, ShoppingCart, Sparkles, Trash2, X } from 'lucide-react';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { ApiError } from '@/lib/api/client';
 import {
+  addToCart,
   addBudgetItem,
   addBudgetItemsFromCart,
   applyBudgetTemplate,
+  clearCart,
   createBudget,
   deleteBudget,
   deleteBudgetTemplate,
   duplicateBudget,
   getBudget,
   getBudgetById,
+  getCart,
+  getProducts,
   getSavedBudgets,
   getBudgetTemplates,
   removeBudgetItem,
@@ -24,22 +29,13 @@ import {
   updateBudgetItem
 } from '@/lib/api/endpoints';
 import { formatCurrency } from '@/lib/utils/money';
-import type { BudgetInsight, BudgetSummary } from '@/types/api';
+import type { BudgetInsight, BudgetSummary, Product } from '@/types/api';
 
 type BudgetPlannerClientProps = {
   initialBudget: BudgetSummary | null;
   initialSavedBudgets: BudgetSummary[];
   initialInsights: BudgetInsight[];
 };
-
-type Offer = { id: string; name: string; price: number; emoji: string };
-
-const offerPool: Offer[] = [
-  { id: 'offer-1', name: 'Versatile Greens', price: 1, emoji: 'V' },
-  { id: 'offer-2', name: 'Broccoli Crown', price: 0.4, emoji: 'B' },
-  { id: 'offer-3', name: 'Carrots Bunch', price: 0.45, emoji: 'C' },
-  { id: 'offer-4', name: 'Mixed Peppers', price: 0.8, emoji: 'P' }
-];
 
 const categoryColors = ['#4caf63', '#f5a623', '#3b82f6', '#8b5cf6', '#e84040'];
 
@@ -51,6 +47,9 @@ function toActionErrorMessage(error: unknown, fallback: string) {
 }
 
 export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initialInsights }: BudgetPlannerClientProps) {
+  const router = useRouter();
+  const addPickerRef = useRef<HTMLDivElement | null>(null);
+  const editPickerRef = useRef<HTMLDivElement | null>(null);
   const [budget, setBudget] = useState<BudgetSummary | null>(initialBudget);
   const [savedBudgets, setSavedBudgets] = useState<BudgetSummary[]>(initialSavedBudgets);
   const [insights] = useState<BudgetInsight[]>(initialInsights);
@@ -63,11 +62,37 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingTemplateName, setEditingTemplateName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [addPickerOpen, setAddPickerOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemProductId, setEditingItemProductId] = useState('');
+  const [editingItemName, setEditingItemName] = useState('');
+  const [editingItemQty, setEditingItemQty] = useState(1);
+  const [editPickerOpen, setEditPickerOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const spent = budget?.spent ?? 0;
+  const productPriceById = useMemo(
+    () =>
+      products.reduce<Record<string, number>>((acc, product) => {
+        acc[String(product.id)] = Number.isFinite(product.price) ? product.price : 0;
+        return acc;
+      }, {}),
+    [products]
+  );
+
+  const computedSpent = useMemo(() => {
+    if (!budget?.items?.length) return 0;
+    return budget.items.reduce((sum, item) => {
+      const fallbackPrice = item.productId ? (productPriceById[item.productId] ?? 0) : 0;
+      const unitPrice = item.price > 0 ? item.price : fallbackPrice;
+      return sum + unitPrice * item.quantity;
+    }, 0);
+  }, [budget?.items, productPriceById]);
+
   const totalBudget = budget?.monthlyLimit ?? 0;
-  const remaining = budget?.remaining ?? totalBudget - spent;
+  const spent = computedSpent > 0 ? computedSpent : budget?.spent ?? 0;
+  const remaining = totalBudget - spent;
   const isOverBudget = remaining < 0;
   const percentUsed = totalBudget > 0 ? Math.min(100, Math.round((spent / totalBudget) * 1000) / 10) : 0;
 
@@ -85,7 +110,48 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     }));
   }, [budget?.items]);
 
-  const offers = offerPool.filter((offer) => offer.price <= Math.max(remaining, 0)).slice(0, 4);
+  const offers = useMemo(
+    () =>
+      products
+        .filter((product) => {
+          const hasDiscount = (product.oldPrice ?? 0) > product.price || (product.discountPercent ?? 0) > 0;
+          return hasDiscount && product.price <= Math.max(remaining, 0);
+        })
+        .sort((a, b) => {
+          const discountA = (a.oldPrice ?? a.price) - a.price;
+          const discountB = (b.oldPrice ?? b.price) - b.price;
+          if (discountB !== discountA) return discountB - discountA;
+          return a.price - b.price;
+        })
+        .slice(0, 4),
+    [products, remaining]
+  );
+  const productNameSet = useMemo(
+    () => new Set(products.map((product) => product.name.trim().toLowerCase())),
+    [products]
+  );
+  const normalizedProducts = useMemo(
+    () =>
+      products.map((product) => ({
+        ...product,
+        normalizedName: product.name.trim().toLowerCase()
+      })),
+    [products]
+  );
+  const filteredAddProducts = useMemo(() => {
+    const query = nameInput.trim().toLowerCase();
+    if (!query) return products.slice(0, 12);
+    return products
+      .filter((product) => product.name.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [products, nameInput]);
+  const filteredEditProducts = useMemo(() => {
+    const query = editingItemName.trim().toLowerCase();
+    if (!query) return products.slice(0, 12);
+    return products
+      .filter((product) => product.name.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [products, editingItemName]);
 
   useEffect(() => {
     let active = true;
@@ -94,8 +160,38 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
         if (active) setTemplates(result.data);
       })
       .catch(() => null);
+    getProducts()
+      .then((result) => {
+        if (active) setProducts(result.data);
+      })
+      .catch(() => null);
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (addPickerRef.current && !addPickerRef.current.contains(target)) {
+        setAddPickerOpen(false);
+      }
+      if (editPickerRef.current && !editPickerRef.current.contains(target)) {
+        setEditPickerOpen(false);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAddPickerOpen(false);
+        setEditPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onEscape);
     };
   }, []);
 
@@ -112,13 +208,27 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
 
   const onAddItem = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!nameInput.trim()) return;
+    const selectedProduct =
+      products.find((product) => String(product.id) === selectedProductId) ??
+      products.find((product) => product.name.trim().toLowerCase() === nameInput.trim().toLowerCase());
+    const finalName = selectedProduct?.name ?? nameInput.trim();
+    if (!finalName) return;
     setNotice(null);
     startTransition(async () => {
       try {
-        const next = await addBudgetItem({ name: nameInput.trim(), quantity: qtyInput, price: 0 }, budget?.id);
+        const next = await addBudgetItem(
+          {
+            name: finalName,
+            quantity: qtyInput,
+            price: selectedProduct?.price ?? 0,
+            productId: selectedProduct ? String(selectedProduct.id) : undefined
+          },
+          budget?.id
+        );
         setBudget(next);
         setNameInput('');
+        setSelectedProductId('');
+        setAddPickerOpen(false);
         setQtyInput(1);
       } catch (error) {
         setNotice(toActionErrorMessage(error, 'Unable to add item right now.'));
@@ -151,6 +261,121 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     });
   };
 
+  const beginItemEdit = (item: BudgetSummary['items'][number]) => {
+    setEditingItemId(item.id);
+    setEditingItemQty(item.quantity);
+    setEditingItemName(item.name);
+    setEditingItemProductId(item.productId ?? products.find((product) => product.name.toLowerCase() === item.name.toLowerCase())?.id ?? '');
+    setEditPickerOpen(false);
+    setNotice(null);
+  };
+
+  const cancelItemEdit = () => {
+    setEditingItemId(null);
+    setEditingItemProductId('');
+    setEditingItemName('');
+    setEditingItemQty(1);
+    setEditPickerOpen(false);
+  };
+
+  const saveItemEdit = (item: BudgetSummary['items'][number]) => {
+    const selectedProduct =
+      products.find((product) => String(product.id) === editingItemProductId) ??
+      products.find((product) => product.name.trim().toLowerCase() === editingItemName.trim().toLowerCase());
+    const nextName = selectedProduct?.name ?? editingItemName.trim();
+    const nextQty = Math.max(1, editingItemQty);
+    if (!nextName) {
+      setNotice('Please select a product.');
+      return;
+    }
+
+    const isProductChanged =
+      (selectedProduct ? String(selectedProduct.id) : '') !== (item.productId ?? '') ||
+      nextName.trim().toLowerCase() !== item.name.trim().toLowerCase();
+    const isQtyChanged = nextQty !== item.quantity;
+
+    if (!isProductChanged && !isQtyChanged) {
+      cancelItemEdit();
+      return;
+    }
+
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        if (isProductChanged) {
+          const afterRemove = await removeBudgetItem(item.id, budget?.id);
+          setBudget(afterRemove);
+          const afterAdd = await addBudgetItem(
+            {
+              name: nextName,
+              quantity: nextQty,
+              price: selectedProduct?.price ?? item.price ?? 0,
+              productId: selectedProduct ? String(selectedProduct.id) : undefined
+            },
+            budget?.id
+          );
+          setBudget(afterAdd);
+        } else {
+          const updated = await updateBudgetItem(item.id, { quantity: nextQty }, budget?.id);
+          setBudget(updated);
+        }
+        cancelItemEdit();
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to update this item.'));
+      }
+    });
+  };
+
+  const getSimilarProducts = useCallback(
+    (name: string) => {
+      const target = name.trim().toLowerCase();
+      if (!target) return [] as Product[];
+      const targetTokens = target.split(' ').filter(Boolean);
+      return normalizedProducts
+        .map((product) => {
+          const tokens = product.normalizedName.split(' ').filter(Boolean);
+          const overlap = targetTokens.filter((token) => tokens.includes(token)).length;
+          const direct = product.normalizedName.includes(target) || target.includes(product.normalizedName);
+          const score = (direct ? 1000 : 0) + overlap * 100 - product.price / 10;
+          return { product, score };
+        })
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map((entry) => entry.product);
+    },
+    [normalizedProducts]
+  );
+  const similarSuggestionsByItemId = useMemo(() => {
+    const map: Record<string, Product[]> = {};
+    (budget?.items ?? []).forEach((item) => {
+      map[item.id] = getSimilarProducts(item.name);
+    });
+    return map;
+  }, [budget?.items, getSimilarProducts]);
+
+  const useSimilarSuggestion = (item: BudgetSummary['items'][number], product: Product) => {
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const afterRemove = await removeBudgetItem(item.id, budget?.id);
+        setBudget(afterRemove);
+        const afterAdd = await addBudgetItem(
+          {
+            name: product.name,
+            quantity: item.quantity,
+            price: product.price ?? 0,
+            productId: String(product.id)
+          },
+          budget?.id
+        );
+        setBudget(afterAdd);
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to apply suggested product.'));
+      }
+    });
+  };
+
   const onDuplicate = () => {
     if (!budget) return;
     setNotice(null);
@@ -178,6 +403,51 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
         syncBudget();
       } catch (error) {
         setNotice(toActionErrorMessage(error, 'Could not import cart items into budget.'));
+      }
+    });
+  };
+
+  const onProceedToCheckout = () => {
+    if (!budget?.items?.length) {
+      setNotice('Your shopping list is empty.');
+      return;
+    }
+
+    const matched = budget.items.filter((item) => item.productId && String(item.productId).trim());
+    if (!matched.length) {
+      setNotice('No matched products to checkout. Unmatched items are ignored.');
+      return;
+    }
+
+    const qtyByProduct = matched.reduce<Record<string, number>>((acc, item) => {
+      const key = String(item.productId);
+      acc[key] = (acc[key] || 0) + Math.max(1, item.quantity);
+      return acc;
+    }, {});
+
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        await clearCart();
+        for (const [productId, quantity] of Object.entries(qtyByProduct)) {
+          await addToCart(productId, quantity);
+        }
+        let cartReady = false;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const currentCart = await getCart().catch(() => null);
+          if (currentCart && currentCart.items.length > 0) {
+            cartReady = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        if (!cartReady) {
+          setNotice('Checkout is still syncing your cart. Please tap Proceed to Checkout again.');
+          return;
+        }
+        router.push('/checkout?from=budget');
+      } catch (error) {
+        setNotice(toActionErrorMessage(error, 'Unable to prepare checkout from this shopping list.'));
       }
     });
   };
@@ -220,11 +490,19 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
     });
   };
 
-  const onQuickAddOffer = (offer: Offer) => {
+  const onQuickAddOffer = (offer: Product) => {
     setNotice(null);
     startTransition(async () => {
       try {
-        const next = await addBudgetItem({ name: offer.name, quantity: 1, price: offer.price }, budget?.id);
+        const next = await addBudgetItem(
+          {
+            name: offer.name,
+            quantity: 1,
+            price: offer.price,
+            productId: String(offer.id)
+          },
+          budget?.id
+        );
         setBudget(next);
       } catch (error) {
         setNotice(toActionErrorMessage(error, 'Unable to add offer item.'));
@@ -408,10 +686,10 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
                 <ShoppingCart className="h-4 w-4" />
                 Add Items From Cart
               </button>
-              <Link prefetch={false} href="/cart" className="bf-budget-btn is-amber">
+              <button type="button" className="bf-budget-btn is-amber" onClick={onProceedToCheckout} disabled={isPending}>
                 <ArrowRight className="h-4 w-4" />
                 Proceed to Checkout
-              </Link>
+              </button>
             </div>
 
             <div className={`bf-budget-status ${isOverBudget ? 'is-warn' : 'is-ok'}`}>
@@ -419,7 +697,7 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
             </div>
           </article>
 
-          <article className="bf-budget-card bf-budget-card-pad">
+          <article className="bf-budget-card bf-budget-card-pad bf-budget-card-allow-overflow">
             <h3 className="bf-budget-card-title">
               <PlusCircle className="h-4 w-4" />
               Add Products To Your Shopping List
@@ -427,7 +705,42 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
             <form className="bf-budget-add-form" onSubmit={onAddItem}>
               <div className="bf-budget-field product-field">
                 <label>Product</label>
-                <input value={nameInput} onChange={(event) => setNameInput(event.target.value)} placeholder="Search products..." />
+                <div className="bf-budget-product-picker" ref={addPickerRef}>
+                  <input
+                    value={nameInput}
+                    onChange={(event) => {
+                      setNameInput(event.target.value);
+                      setSelectedProductId('');
+                      setAddPickerOpen(true);
+                    }}
+                    onFocus={() => setAddPickerOpen(true)}
+                    onBlur={() => window.setTimeout(() => setAddPickerOpen(false), 120)}
+                    placeholder="Search products..."
+                  />
+                  {products.length && addPickerOpen ? (
+                    <div className="bf-budget-product-dropdown">
+                      {filteredAddProducts.length ? (
+                        filteredAddProducts.map((product) => (
+                          <button
+                            key={product.id}
+                            type="button"
+                            className="bf-budget-product-option"
+                            onMouseDown={() => {
+                              setSelectedProductId(String(product.id));
+                              setNameInput(product.name);
+                              setAddPickerOpen(false);
+                            }}
+                          >
+                            <span>{product.name}</span>
+                            <strong>{formatCurrency(product.price)}</strong>
+                          </button>
+                        ))
+                      ) : (
+                        <span className="bf-budget-product-empty">No product match</span>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div className="bf-budget-field">
                 <label>Quantity</label>
@@ -445,12 +758,12 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
             </form>
           </article>
 
-          <article className="bf-budget-card">
+          <article className="bf-budget-card bf-budget-card-allow-overflow">
             <div className="bf-budget-list-head">
               <h3>Your Shopping List</h3>
-              <Link prefetch={false} href="/cart" className="bf-budget-btn is-amber is-sm">
+              <button type="button" className="bf-budget-btn is-amber is-sm" onClick={onProceedToCheckout} disabled={isPending}>
                 Proceed to Checkout
-              </Link>
+              </button>
             </div>
             <div className="bf-budget-table-head">
               <span>Product</span>
@@ -462,30 +775,128 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
             {budget?.items?.length ? (
               <div>
                 {budget.items.map((item) => {
-                  const unit = item.price;
+                  const fallbackPrice = item.productId ? (productPriceById[item.productId] ?? 0) : 0;
+                  const unit = item.price > 0 ? item.price : fallbackPrice;
                   const total = unit * item.quantity;
-                  const unmatched = unit <= 0;
+                  const hasProductId = Boolean(item.productId && String(item.productId).trim());
+                  const hasNameMatch = productNameSet.has(item.name.trim().toLowerCase());
+                  const unmatched = !hasProductId && !hasNameMatch;
+                  const editing = editingItemId === item.id;
+                  const selectedEditProduct = products.find((product) => String(product.id) === editingItemProductId);
+                  const editUnit = selectedEditProduct?.price ?? unit;
+                  const editTotal = editUnit * Math.max(1, editingItemQty);
                   return (
                     <div key={item.id} className="bf-budget-row">
                       <div>
-                        <p className="bf-budget-product">{item.name}</p>
-                        {item.category ? <p className="bf-budget-shop">{item.category}</p> : null}
-                        {unmatched ? <span className="bf-budget-badge">Unmatched</span> : null}
+                        {editing ? (
+                          <div className="bf-budget-row-edit">
+                            <div className="bf-budget-product-picker" ref={editPickerRef}>
+                              <input
+                                value={editingItemName}
+                                onChange={(event) => {
+                                  setEditingItemName(event.target.value);
+                                  setEditingItemProductId('');
+                                  setEditPickerOpen(true);
+                                }}
+                                onFocus={() => setEditPickerOpen(true)}
+                                onBlur={() => window.setTimeout(() => setEditPickerOpen(false), 120)}
+                                placeholder="Search products..."
+                              />
+                              {products.length && editPickerOpen ? (
+                                <div className="bf-budget-product-dropdown">
+                                  {filteredEditProducts.length ? (
+                                    filteredEditProducts.map((product) => (
+                                      <button
+                                        key={product.id}
+                                        type="button"
+                                        className="bf-budget-product-option"
+                                        onMouseDown={() => {
+                                          setEditingItemProductId(String(product.id));
+                                          setEditingItemName(product.name);
+                                          setEditPickerOpen(false);
+                                        }}
+                                      >
+                                        <span>{product.name}</span>
+                                        <strong>{formatCurrency(product.price)}</strong>
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <span className="bf-budget-product-empty">No product match</span>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="bf-budget-product">{item.name}</p>
+                            {item.category ? <p className="bf-budget-shop">{item.category}</p> : null}
+                            {unmatched ? <span className="bf-budget-badge">Unmatched</span> : null}
+                            {unmatched ? (
+                              <div className="bf-budget-suggest-wrap">
+                                <p className="bf-budget-suggest-label">Suggested similar products</p>
+                                <div className="bf-budget-suggest-list">
+                                  {(similarSuggestionsByItemId[item.id] ?? []).length ? (
+                                    (similarSuggestionsByItemId[item.id] ?? []).map((product) => (
+                                      <button
+                                        key={product.id}
+                                        type="button"
+                                        className="bf-budget-suggest-btn"
+                                        onClick={() => useSimilarSuggestion(item, product)}
+                                      >
+                                        {product.name}
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <span className="bf-budget-suggest-empty">No similar products found.</span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                       </div>
-                      <p className="bf-budget-price">{formatCurrency(unit)}</p>
-                      <div className="bf-budget-qty">
-                        <button type="button" onClick={() => onChangeQty(item.id, item.quantity - 1)}>
-                          -
-                        </button>
-                        <span>{item.quantity}</span>
-                        <button type="button" onClick={() => onChangeQty(item.id, item.quantity + 1)}>
-                          +
-                        </button>
-                      </div>
-                      <p className="bf-budget-price total">{formatCurrency(total)}</p>
-                      <button type="button" className="bf-budget-del" onClick={() => onRemove(item.id)} aria-label={`Remove ${item.name}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <p className="bf-budget-price">{formatCurrency(editing ? editUnit : unit)}</p>
+                      {editing ? (
+                        <div className="bf-budget-row-edit qty">
+                          <input
+                            type="number"
+                            min={1}
+                            value={editingItemQty}
+                            onChange={(event) => setEditingItemQty(Math.max(1, Number.parseInt(event.target.value || '1', 10)))}
+                          />
+                        </div>
+                      ) : (
+                        <div className="bf-budget-qty">
+                          <button type="button" onClick={() => onChangeQty(item.id, item.quantity - 1)}>
+                            -
+                          </button>
+                          <span>{item.quantity}</span>
+                          <button type="button" onClick={() => onChangeQty(item.id, item.quantity + 1)}>
+                            +
+                          </button>
+                        </div>
+                      )}
+                      <p className="bf-budget-price total">{formatCurrency(editing ? editTotal : total)}</p>
+                      {editing ? (
+                        <div className="bf-budget-row-actions">
+                          <button type="button" className="bf-budget-del" onClick={() => saveItemEdit(item)} aria-label={`Save ${item.name}`}>
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button type="button" className="bf-budget-del" onClick={cancelItemEdit} aria-label={`Cancel editing ${item.name}`}>
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="bf-budget-row-actions">
+                          <button type="button" className="bf-budget-del" onClick={() => beginItemEdit(item)} aria-label={`Edit ${item.name}`}>
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button type="button" className="bf-budget-del" onClick={() => onRemove(item.id)} aria-label={`Remove ${item.name}`}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -532,8 +943,17 @@ export function BudgetPlannerClient({ initialBudget, initialSavedBudgets, initia
             {offers.length ? (
               offers.map((offer) => (
                 <div key={offer.id} className="bf-offer-row">
-                  <div className="thumb">{offer.emoji}</div>
-                  <p className="name">{offer.name}</p>
+                  <div className="thumb">{offer.name.charAt(0).toUpperCase()}</div>
+                  <div className="offer-main">
+                    <p className="name">{offer.name}</p>
+                    {(offer.oldPrice ?? 0) > offer.price || (offer.discountPercent ?? 0) > 0 ? (
+                      <span className="bf-offer-discount">
+                        {offer.discountPercent && offer.discountPercent > 0
+                          ? `-${Math.round(offer.discountPercent)}%`
+                          : `Save ${formatCurrency(Math.max(0, (offer.oldPrice ?? offer.price) - offer.price))}`}
+                      </span>
+                    ) : null}
+                  </div>
                   <strong className="price">{formatCurrency(offer.price)}</strong>
                   <button type="button" onClick={() => onQuickAddOffer(offer)}>
                     +

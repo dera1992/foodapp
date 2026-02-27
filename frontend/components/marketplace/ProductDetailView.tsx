@@ -2,9 +2,19 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Product } from '@/types/api';
 import { StartChatDialog } from '@/components/chat/StartChatDialog';
-import { addToCart, addWishlist, removeWishlistByProduct, subscribeShop } from '@/lib/api/endpoints';
+import {
+  addToCart,
+  addWishlist,
+  getCart,
+  getWishlist,
+  removeWishlistByProduct,
+  subscribeShop,
+  updateCartItem
+} from '@/lib/api/endpoints';
+import { ApiError } from '@/lib/api/client';
 type Props = {
   product: Product;
   related: Product[];
@@ -116,7 +126,7 @@ function IconInfo() {
 
 // ---- Helpers ----
 function formatPrice(value: number) {
-  return `N${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `£${value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 type ExpiryUrgency = 'expired' | 'today' | 'soon' | 'week' | 'normal';
@@ -342,7 +352,9 @@ export function ProductDetailView({
   isAuthenticated,
   canSubscribeToShop = true,
 }: Props) {
+  const router = useRouter();
   const [qty, setQty] = useState(1);
+  const [inCartQty, setInCartQty] = useState(0);
   const [wishlisted, setWishlisted] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('description');
@@ -362,33 +374,123 @@ export function ProductDetailView({
   const categories = product.categories?.length ? product.categories : product.category ? [product.category] : [];
   const filledStars = Math.round(Math.max(0, Math.min(5, product.rating ?? 0)));
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setWishlisted(false);
+      return;
+    }
+    let active = true;
+    void getWishlist()
+      .then((response) => {
+        if (!active) return;
+        const exists = response.data.some((item) => String(item.id) === String(product.id));
+        setWishlisted(exists);
+      })
+      .catch(() => {
+        if (active) setWishlisted(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, product.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setInCartQty(0);
+      setQty(1);
+      return;
+    }
+    let active = true;
+    void getCart()
+      .then((cart) => {
+        if (!active) return;
+        const existing = cart.items.find((item) => String(item.productId) === String(product.id));
+        const nextQty = existing?.quantity ?? 0;
+        setInCartQty(nextQty);
+        if (nextQty > 0) setQty(nextQty);
+      })
+      .catch(() => {
+        if (!active) return;
+        setInCartQty(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, product.id]);
+
+  const onQtyChange = (nextQty: number) => {
+    setQty(nextQty);
+    if (!isAuthenticated || inCartQty < 1) return;
+    start(async () => {
+      try {
+        await updateCartItem(product.id, nextQty);
+        setInCartQty(nextQty);
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('cart:refresh'));
+      } catch {
+        // Keep UI responsive; add-to-cart remains available as fallback.
+      }
+    });
+  };
+
   const onAddToCart = () => {
+    if (!isAuthenticated) {
+      router.push('/login?next=%2Fproducts');
+      return;
+    }
     setNotice(null);
     start(async () => {
       try {
-        await addToCart(product.id, qty);
-        setNotice({ msg: `${qty} x ${product.name} added to cart.`, ok: true });
-      } catch {
+        if (inCartQty > 0) {
+          await updateCartItem(product.id, qty);
+        } else {
+          await addToCart(product.id, qty);
+        }
+        setInCartQty(qty);
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('cart:refresh'));
+        setNotice({ msg: `${product.name} cart quantity is now ${qty}.`, ok: true });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          router.push('/login?next=%2Fproducts');
+          return;
+        }
         setNotice({ msg: 'Could not add to cart. Please try again.', ok: false });
       }
     });
   };
 
   const onWishlist = () => {
+    if (!isAuthenticated) {
+      router.push('/login?next=%2Fproducts');
+      return;
+    }
     const next = !wishlisted;
     setWishlisted(next);
     if (next) {
       addWishlist(product.id)
-        .then(() => setNotice({ msg: 'Added to wishlist!', ok: true }))
-        .catch(() => {
+        .then(() => {
+          if (typeof window !== 'undefined') window.dispatchEvent(new Event('wishlist:refresh'));
+          setNotice({ msg: 'Added to wishlist!', ok: true });
+        })
+        .catch((error) => {
+          if (error instanceof ApiError && error.status === 401) {
+            router.push('/login?next=%2Fproducts');
+            return;
+          }
           setWishlisted(false);
           setNotice({ msg: 'Could not update wishlist right now.', ok: false });
         });
       return;
     }
     removeWishlistByProduct(product.id)
-      .then(() => setNotice({ msg: 'Removed from wishlist.', ok: true }))
-      .catch(() => {
+      .then(() => {
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('wishlist:refresh'));
+        setNotice({ msg: 'Removed from wishlist.', ok: true });
+      })
+      .catch((error) => {
+        if (error instanceof ApiError && error.status === 401) {
+          router.push('/login?next=%2Fproducts');
+          return;
+        }
         setWishlisted(true);
         setNotice({ msg: 'Could not update wishlist right now.', ok: false });
       });
@@ -464,9 +566,9 @@ export function ProductDetailView({
           </p>
 
           <div className="pd-action-row">
-            <QuantityStepper value={qty} onChange={setQty} />
+            <QuantityStepper value={qty} onChange={onQtyChange} />
             <button type="button" className="pd-cart-btn" onClick={onAddToCart} disabled={isPending}>
-              <IconCart /> {isPending ? 'Adding...' : 'Add to Cart'}
+              <IconCart /> {isPending ? 'Saving...' : inCartQty > 0 ? 'Update Cart' : 'Add to Cart'}
             </button>
             <button type="button" className={`pd-wish-btn${wishlisted ? ' wishlisted' : ''}`} onClick={onWishlist} aria-label="Wishlist">
               <IconHeart filled={wishlisted} />

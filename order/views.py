@@ -28,8 +28,8 @@ from datetime import date
 import random
 import string
 
-from django.core.mail import EmailMessage
 from django.template.loader import get_template
+from account.tasks import send_email_message_task
 
 
 # Create your views here.
@@ -267,11 +267,13 @@ def verify_payment(request:HttpRequest, ref:str) -> HttpResponse:
             'payment': payment,
         })
         to_email = [payment.user.email]
-        email = EmailMessage(
-            subject, message, from_email='Bunchfood <bunchfood@gmail.com>', to=to_email
+        send_email_message_task.delay(
+            subject,
+            message,
+            'Bunchfood <bunchfood@gmail.com>',
+            to_email,
+            True,
         )
-        email.content_subtype = 'html'
-        email.send()
         messages.success(request, "Payment Verifiction Successful")
         # return render(request, 'paystack/success-page.html', )
     else:
@@ -280,11 +282,13 @@ def verify_payment(request:HttpRequest, ref:str) -> HttpResponse:
             'payment': payment,
         })
         to_email = [payment.user.email]
-        email = EmailMessage(
-            subject, message, from_email='Bunchfood <bunchfood@gmail.com>', to=to_email
+        send_email_message_task.delay(
+            subject,
+            message,
+            'Bunchfood <bunchfood@gmail.com>',
+            to_email,
+            True,
         )
-        email.content_subtype = 'html'
-        email.send()
         messages.error(request, "Payment Verification Failed")
     return redirect("order:order_owner")
 

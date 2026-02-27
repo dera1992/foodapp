@@ -11,9 +11,6 @@ from django.db.models import Avg, Count
 from django.utils import timezone
 from hitcount.models import HitCountMixin, HitCount
 from django.contrib.contenttypes.fields import GenericRelation
-from PIL import Image
-from io import BytesIO
-from django.core.files.base import ContentFile
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
@@ -33,28 +30,52 @@ class SubCategory(models.Model):
     def __str__(self):
         return self.name
 
+
+class LabelOption(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
+class StatusOption(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
+class DeliveryMethod(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
+class DayOption(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
 class Products(models.Model):
-    LABEL_CHOICES = (
-        ('P', 'onsale'),
-        ('S', 'secondary'),
-    )
-
-    STATUS_CHOICES = (
-        ("draft", "Draft"),
-        ("available", "Available"),
-        ("out_of_stock", "Out of Stock"),
-        ("unavailable", "Unavailable"),
-    )
-
-    DAYS = (
-        ('Now', 'Now'),
-        ('1-2days', '1-2days'),
-        ('2-3days', '2-3days'),
-        ('3-4days', '3-4days'),
-        ('4-5days', '4-5days'),
-        ('5-6days', '5-6days'),
-    )
-
     shop = models.ForeignKey(Shop,
                                 on_delete=models.CASCADE)
     title =models.CharField( max_length=255)
@@ -62,18 +83,22 @@ class Products(models.Model):
                                  on_delete=models.CASCADE)
     subcategory = models.ForeignKey(SubCategory,
                              on_delete=models.CASCADE, null=True, blank=True)
-    status = models.CharField(max_length=25, choices=STATUS_CHOICES, blank=True, null=True)
+    status = models.ForeignKey("StatusOption", on_delete=models.SET_NULL, null=True, blank=True)
     price = models.DecimalField(decimal_places=2,
                                    max_digits=10)
     discount_price = models.DecimalField(decimal_places=2, max_digits=10, blank=True, null=True)
-    label = models.CharField(choices=LABEL_CHOICES, max_length=1, null=True, blank=True)
-    delivery = models.CharField(choices=DAYS, max_length=15, null=True, blank=True)
+    label = models.ForeignKey("LabelOption", on_delete=models.SET_NULL, null=True, blank=True)
+    delivery = models.ForeignKey("DeliveryMethod", on_delete=models.SET_NULL, null=True, blank=True)
+    delivery_time = models.ForeignKey("DayOption", on_delete=models.SET_NULL, null=True, blank=True)
     barcode = models.CharField(max_length=64, blank=True)
+    brand = models.CharField(max_length=120, blank=True, null=True)
+    weight = models.CharField(max_length=64, blank=True, null=True)
     slug = models.SlugField(max_length=200,blank=True)
     ai_recommended_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     stock = models.PositiveIntegerField(default=0)
     expires_on = models.DateField(null=True, blank=True, db_index=True)
     description = models.TextField(blank=True)
+    nutrition = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     created_date = models.DateField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True,null=True, blank=True)
@@ -173,23 +198,6 @@ class ProductsImages(models.Model):
         return self.products.images.all()
 
     def save(self, *args, **kwargs):
-        if self.product_image:
-            img = Image.open(self.product_image)
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-
-            # Resize large images
-            max_size = (1000, 1000)
-            img.thumbnail(max_size)
-
-            # Compress image
-            buffer = BytesIO()
-            img.save(buffer, format='JPEG', quality=75)
-            buffer.seek(0)
-
-            # Replace original image with compressed one
-            self.product_image.save(self.product_image.name, ContentFile(buffer.read()), save=False)
-
         super().save(*args, **kwargs)
 
 class ReviewRating(models.Model):

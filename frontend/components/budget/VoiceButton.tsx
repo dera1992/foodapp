@@ -27,7 +27,7 @@ export function VoiceButton({ listening, transcript, supported, onToggle }: Voic
         >
           <span className="bf-budget-create-mic-dot" />
           {listening ? <MicOff size={14} /> : <Mic size={14} />}
-          {listening ? 'Listening...' : 'Speak budget'}
+          {listening ? 'Listening...' : 'Speak budget + items'}
         </button>
         <span className="bf-budget-create-voice-note">or type above</span>
       </div>

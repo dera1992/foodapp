@@ -2,7 +2,10 @@
 
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Product } from '@/types/api';
+import { addToCart, addWishlist, getWishlist, removeWishlistByProduct } from '@/lib/api/endpoints';
+import { ApiError } from '@/lib/api/client';
 
 type SortKey = 'latest' | 'price-asc' | 'price-desc' | 'expiry' | 'discount';
 type ViewMode = 'list' | 'grid';
@@ -40,9 +43,16 @@ function IconCart() {
     </svg>
   );
 }
-function IconHeart() {
+function IconHeart({ filled = false }: { filled?: boolean }) {
   return (
-    <svg className="pl-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <svg
+      className="pl-icon-sm"
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
       <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
     </svg>
   );
@@ -105,7 +115,21 @@ function getPaginationRange(current: number, total: number): (number | '...')[] 
 }
 
 /* ── List card ── */
-function ProductListCard({ product, animIndex }: { product: Product; animIndex: number }) {
+function ProductListCard({
+  product,
+  animIndex,
+  wishlisted,
+  isBusy,
+  onAddToCart,
+  onToggleWishlist,
+}: {
+  product: Product;
+  animIndex: number;
+  wishlisted: boolean;
+  isBusy: boolean;
+  onAddToCart: (productId: string) => void;
+  onToggleWishlist: (productId: string) => void;
+}) {
   const expiry = getExpiryInfo(product.expiresOn);
   const emoji = getProductEmoji(product);
   const urgencyClass = expiry.urgency === 'today' ? ' urgent' : expiry.urgency === 'soon' ? ' warn' : '';
@@ -160,16 +184,22 @@ function ProductListCard({ product, animIndex }: { product: Product; animIndex: 
             <span className="pl-pcl-disc">{product.discountPercent}% OFF</span>
           ) : null}
           <div className="pl-pcl-actions">
-            <button type="button" className="pl-btn-cart" onClick={(e) => e.preventDefault()}>
+            <button
+              type="button"
+              className="pl-btn-cart"
+              onClick={() => onAddToCart(product.id)}
+              disabled={isBusy}
+            >
               <IconCart /> Add to cart
             </button>
             <button
               type="button"
-              className="pl-btn-wish"
-              onClick={(e) => e.preventDefault()}
+              className={`pl-btn-wish${wishlisted ? ' wishlisted' : ''}`}
+              onClick={() => onToggleWishlist(product.id)}
+              disabled={isBusy}
               aria-label="Add to wishlist"
             >
-              <IconHeart />
+              <IconHeart filled={wishlisted} />
             </button>
           </div>
         </div>
@@ -179,7 +209,21 @@ function ProductListCard({ product, animIndex }: { product: Product; animIndex: 
 }
 
 /* ── Grid card ── */
-function ProductGridCard({ product, animIndex }: { product: Product; animIndex: number }) {
+function ProductGridCard({
+  product,
+  animIndex,
+  wishlisted,
+  isBusy,
+  onAddToCart,
+  onToggleWishlist,
+}: {
+  product: Product;
+  animIndex: number;
+  wishlisted: boolean;
+  isBusy: boolean;
+  onAddToCart: (productId: string) => void;
+  onToggleWishlist: (productId: string) => void;
+}) {
   const expiry = getExpiryInfo(product.expiresOn);
   const emoji = getProductEmoji(product);
   const urgencyClass = expiry.urgency === 'today' ? ' urgent' : expiry.urgency === 'soon' ? ' warn' : '';
@@ -199,11 +243,12 @@ function ProductGridCard({ product, animIndex }: { product: Product; animIndex: 
         </div>
         <button
           type="button"
-          className="pl-pcg-wish"
-          onClick={(e) => e.preventDefault()}
+          className={`pl-pcg-wish${wishlisted ? ' wishlisted' : ''}`}
+          onClick={() => onToggleWishlist(product.id)}
+          disabled={isBusy}
           aria-label="Add to wishlist"
         >
-          <IconHeart />
+          <IconHeart filled={wishlisted} />
         </button>
       </div>
 
@@ -237,7 +282,8 @@ function ProductGridCard({ product, animIndex }: { product: Product; animIndex: 
           <button
             type="button"
             className="pl-btn-pcg-cart"
-            onClick={(e) => e.preventDefault()}
+            onClick={() => onAddToCart(product.id)}
+            disabled={isBusy}
             aria-label="Add to cart"
           >
             <IconPlus />
@@ -249,9 +295,10 @@ function ProductGridCard({ product, animIndex }: { product: Product; animIndex: 
 }
 
 /* ── Main component ── */
-type Props = { products: Product[]; allCategories: string[] };
+type Props = { products: Product[]; allCategories: string[]; isAuthenticated?: boolean };
 
-export function ProductListClient({ products, allCategories }: Props) {
+export function ProductListClient({ products, allCategories, isAuthenticated = false }: Props) {
+  const router = useRouter();
   const priceMax = useMemo(() => Math.max(50, ...products.map((p) => p.price)), [products]);
 
   const [query, setQuery] = useState('');
@@ -263,6 +310,10 @@ export function ProductListClient({ products, allCategories }: Props) {
   const [sort, setSort] = useState<SortKey>('latest');
   const [view, setView] = useState<ViewMode>('list');
   const [page, setPage] = useState(1);
+  const [wishlistedIds, setWishlistedIds] = useState<Record<string, boolean>>({});
+  const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -354,6 +405,96 @@ export function ProductListClient({ products, allCategories }: Props) {
     setDebouncedQuery('');
     setPage(1);
   };
+
+  const productNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const product of products) {
+      map[String(product.id)] = product.name || 'Product';
+    }
+    return map;
+  }, [products]);
+
+  useEffect(() => {
+    if (!actionNotice) return;
+    const timeoutId = window.setTimeout(() => setActionNotice(null), 2500);
+    return () => window.clearTimeout(timeoutId);
+  }, [actionNotice]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setWishlistedIds({});
+      return;
+    }
+    let active = true;
+    void getWishlist()
+      .then((response) => {
+        if (!active) return;
+        const next: Record<string, boolean> = {};
+        for (const item of response.data) {
+          if (item?.id) next[String(item.id)] = true;
+        }
+        setWishlistedIds(next);
+      })
+      .catch(() => {
+        if (active) setWishlistedIds({});
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
+
+  const requireAuth = useCallback(() => {
+    if (isAuthenticated) return false;
+    router.push(`/login?next=${encodeURIComponent('/products')}`);
+    return true;
+  }, [isAuthenticated, router]);
+
+  const setBusy = useCallback((productId: string, busy: boolean) => {
+    setBusyIds((prev) => ({ ...prev, [productId]: busy }));
+  }, []);
+
+  const handleAddToCart = useCallback(async (productId: string) => {
+    if (requireAuth()) return;
+    setBusy(productId, true);
+    setActionNotice(null);
+    setActionError(null);
+    try {
+      await addToCart(productId, 1);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('cart:refresh'));
+      const name = productNameById[productId] ?? 'Product';
+      setActionNotice(`${name} added to cart.`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        router.push(`/login?next=${encodeURIComponent('/products')}`);
+        return;
+      }
+      setActionError('Could not add to cart right now. Please try again.');
+    } finally {
+      setBusy(productId, false);
+    }
+  }, [productNameById, requireAuth, router, setBusy]);
+
+  const handleToggleWishlist = useCallback(async (productId: string) => {
+    if (requireAuth()) return;
+    const nextWishlisted = !wishlistedIds[productId];
+    setWishlistedIds((prev) => ({ ...prev, [productId]: nextWishlisted }));
+    setBusy(productId, true);
+    setActionError(null);
+    try {
+      if (nextWishlisted) await addWishlist(productId);
+      else await removeWishlistByProduct(productId);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('wishlist:refresh'));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        router.push(`/login?next=${encodeURIComponent('/products')}`);
+        return;
+      }
+      setWishlistedIds((prev) => ({ ...prev, [productId]: !nextWishlisted }));
+      setActionError('Could not update wishlist right now. Please try again.');
+    } finally {
+      setBusy(productId, false);
+    }
+  }, [requireAuth, router, setBusy, wishlistedIds]);
 
   return (
     <div className="pl-page">
@@ -524,6 +665,16 @@ export function ProductListClient({ products, allCategories }: Props) {
           </div>
 
           {/* Active filters */}
+          {actionNotice ? (
+            <div className="pl-active-filters" role="status" aria-live="polite">
+              <span className="pl-af-label" style={{ color: '#166534' }}>{actionNotice}</span>
+            </div>
+          ) : null}
+          {actionError ? (
+            <div className="pl-active-filters" role="status" aria-live="polite">
+              <span className="pl-af-label" style={{ color: '#b42318' }}>{actionError}</span>
+            </div>
+          ) : null}
           {hasActiveFilters ? (
             <div className="pl-active-filters">
               <span className="pl-af-label">Active filters:</span>
@@ -574,11 +725,31 @@ export function ProductListClient({ products, allCategories }: Props) {
             </div>
           ) : view === 'list' ? (
             <div className="pl-products-list">
-              {paged.map((p, i) => <ProductListCard key={p.id} product={p} animIndex={i} />)}
+              {paged.map((p, i) => (
+                <ProductListCard
+                  key={p.id}
+                  product={p}
+                  animIndex={i}
+                  wishlisted={Boolean(wishlistedIds[p.id])}
+                  isBusy={Boolean(busyIds[p.id])}
+                  onAddToCart={handleAddToCart}
+                  onToggleWishlist={handleToggleWishlist}
+                />
+              ))}
             </div>
           ) : (
             <div className="pl-products-grid">
-              {paged.map((p, i) => <ProductGridCard key={p.id} product={p} animIndex={i} />)}
+              {paged.map((p, i) => (
+                <ProductGridCard
+                  key={p.id}
+                  product={p}
+                  animIndex={i}
+                  wishlisted={Boolean(wishlistedIds[p.id])}
+                  isBusy={Boolean(busyIds[p.id])}
+                  onAddToCart={handleAddToCart}
+                  onToggleWishlist={handleToggleWishlist}
+                />
+              ))}
             </div>
           )}
 

@@ -17,7 +17,7 @@ export default async function WishlistPage() {
       <Container className="py-10">
         <Card className="bg-white p-5 sm:p-6">
           {items.length ? (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{items.map((product) => <ProductCard key={product.id} product={product} />)}</div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{items.map((product) => <ProductCard key={product.id} product={product} />)}</div>
           ) : (
             <EmptyState title="No saved items" description="Save products to compare and buy later." actionLabel="Browse products" actionHref="/shops" />
           )}

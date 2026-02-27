@@ -14,7 +14,21 @@ class AdsForm(forms.ModelForm):
 
     class Meta:
         model = Products
-        fields = ('title', 'category','subcategory','price','discount_price','description','label','status','delivery','available', 'barcode')
+        fields = (
+            'title',
+            'category',
+            'subcategory',
+            'price',
+            'discount_price',
+            'description',
+            'nutrition',
+            'label',
+            'status',
+            'delivery',
+            'delivery_time',
+            'available',
+            'barcode',
+        )
 
     def __init__(self, *args, **kwargs):
         currency = kwargs.pop("currency", None)
@@ -53,7 +67,21 @@ class AdsEditForm(forms.ModelForm):
 
     class Meta:
         model = Products
-        fields = ('title', 'category','subcategory','price','discount_price','description','label','status','delivery','available', 'barcode')
+        fields = (
+            'title',
+            'category',
+            'subcategory',
+            'price',
+            'discount_price',
+            'description',
+            'nutrition',
+            'label',
+            'status',
+            'delivery',
+            'delivery_time',
+            'available',
+            'barcode',
+        )
 
     def __init__(self, *args, **kwargs):
         currency = kwargs.pop("currency", None)

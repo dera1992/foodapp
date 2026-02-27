@@ -7,6 +7,7 @@
 
 export type Shop = {
   id: string;
+  idNumber?: string;
   ownerUserId?: string;
   slug?: string;
   name: string;
@@ -63,10 +64,12 @@ export type CartItem = {
   id?: string;
   productId: string;
   name: string;
+  shopId?: string;
   shopName?: string;
   image?: string | null;
   quantity: number;
   unitPrice: number;
+  oldUnitPrice?: number;
   lineTotal: number;
   savings?: number;
 };
@@ -222,6 +225,10 @@ export type CustomerProfile = {
   delivery_note?: string;
   dietary_preference?: string;
   household_size?: string | number;
+  shop_name?: string;
+  shop_category?: string;
+  opening_hours?: string;
+  shop_description?: string;
 };
 
 export type DispatcherProfile = {

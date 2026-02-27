@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import type { BudgetSummary, Cart, OrderSummary } from '@/types/api';
-import { addToCart, applyCoupon, clearCart, getCart, removeCartItem, removeSingleCartItem, updateCartItem } from '@/lib/api/endpoints';
+import { addToCart, clearCart, getCart, removeCartItem, removeSingleCartItem, updateCartItem } from '@/lib/api/endpoints';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { CartTable } from '@/components/cart/CartTable';
 import { CartSummaryCard } from '@/components/cart/CartSummaryCard';
@@ -16,15 +16,14 @@ type CartPageClientProps = {
 
 export function CartPageClient({ initialCart, orderSummary, budget }: CartPageClientProps) {
   const [cart, setCart] = useState(initialCart);
-  const [couponCode, setCouponCode] = useState('');
-  const [couponFeedback, setCouponFeedback] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const itemCount = cart.count || cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  const itemCount = useMemo(
+    () => new Set(cart.items.map((item) => String(item.productId))).size,
+    [cart.items]
+  );
   const budgetTotal = budget?.monthlyLimit ?? 0;
-  const plannedSpend = cart.total || orderSummary?.total || 0;
-  const remaining = budget ? budget.remaining : budgetTotal - plannedSpend;
 
   const onSync = () => {
     startTransition(async () => {
@@ -90,31 +89,18 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
     });
   };
 
-  const onApplyCoupon = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!couponCode.trim()) return;
-    setCouponFeedback(null);
-
-    startTransition(async () => {
-      try {
-        const next = await applyCoupon(couponCode.trim());
-        setCart(next);
-        setCouponFeedback('Coupon applied successfully.');
-      } catch {
-        setCouponFeedback('Coupon is invalid or unavailable.');
-      }
-    });
-  };
-
-  const totals = useMemo(
-    () => ({
-      subtotal: cart.subtotal || cart.items.reduce((sum, item) => sum + item.lineTotal, 0),
-      shipping: cart.shipping || 0,
-      total: cart.total || cart.items.reduce((sum, item) => sum + item.lineTotal, 0),
-      savings: cart.savings || cart.items.reduce((sum, item) => sum + (item.savings || 0), 0)
-    }),
-    [cart]
-  );
+  const totals = useMemo(() => {
+    const subtotal = cart.items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const shipping = cart.shipping || 0;
+    return {
+      subtotal,
+      shipping,
+      total: subtotal + shipping,
+      savings: cart.items.reduce((sum, item) => sum + (item.savings || 0), 0)
+    };
+  }, [cart.items, cart.shipping]);
+  const plannedSpend = totals.total;
+  const remaining = budgetTotal - plannedSpend;
 
   return (
     <>
@@ -141,24 +127,7 @@ export function CartPageClient({ initialCart, orderSummary, budget }: CartPageCl
               </button>
             </div>
           ) : null}
-          {cart.items.length > 0 ? (
-            <section className="bf-coupon-card">
-              <h3>Discount Coupon Code</h3>
-              <form className="bf-coupon-row" onSubmit={onApplyCoupon}>
-                <input
-                  value={couponCode}
-                  onChange={(event) => setCouponCode(event.target.value)}
-                  placeholder="Enter coupon code..."
-                  aria-label="Coupon code"
-                />
-                <button type="submit" disabled={isPending}>
-                  Apply Coupon
-                </button>
-              </form>
-              {couponFeedback ? <p className="mt-3 text-sm text-brand-muted">{couponFeedback}</p> : null}
-              {cartNotice ? <p className="mt-2 text-sm text-brand-muted">{cartNotice}</p> : null}
-            </section>
-          ) : cartNotice ? (
+          {cartNotice ? (
             <p className="mt-3 text-sm text-brand-muted">{cartNotice}</p>
           ) : null}
         </div>

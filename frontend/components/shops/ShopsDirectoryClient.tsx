@@ -37,6 +37,7 @@ function ShopListCard({
 }: { shop: Shop; index: number; isAuthenticated: boolean; currentUserId?: string | null }) {
   const color = COVER_COLORS[index % 3];
   const isOwnShop = Boolean(isAuthenticated && currentUserId && shop.ownerUserId && String(currentUserId) === String(shop.ownerUserId));
+  const isOpen = shop.isOpen !== false;
   return (
     <div className="shop-card-list">
       <div className={`scl-cover${color ? ` ${color}` : ''}`} />
@@ -53,11 +54,12 @@ function ShopListCard({
             {[shop.address, shop.city].filter(Boolean).join(', ') || 'Location unavailable'}
           </div>
           <div className="scl-meta">
-            <div className="scl-badge">
-              <span className={`open-dot${shop.isOpen === false ? ' closed' : ''}`} />
-              <span className={`open-lbl${shop.isOpen === false ? ' red' : ' green'}`}>
-                {shop.isOpen === false ? 'Closed' : 'Open now'}
+            <div className="scl-status-wrap">
+              <span className={`scl-status-pill${isOpen ? ' is-open' : ' is-closed'}`}>
+                <span className="scl-status-dot" />
+                {isOpen ? 'Open now' : 'Closed'}
               </span>
+              {shop.openingHours ? <span className="scl-hours">{shop.openingHours}</span> : null}
             </div>
             {shop.productsCount != null && (
               <div className="scl-badge">
@@ -94,12 +96,13 @@ function ShopGridCard({
 }: { shop: Shop; index: number; isAuthenticated: boolean; currentUserId?: string | null }) {
   const color = COVER_COLORS[index % 3];
   const isOwnShop = Boolean(isAuthenticated && currentUserId && shop.ownerUserId && String(currentUserId) === String(shop.ownerUserId));
+  const isOpen = shop.isOpen !== false;
   return (
     <Link href={`/shops/${shop.id}`} className="shop-card-grid">
       <div className={`scg-cover${color ? ` ${color}` : ''}`}>
-        <div className="scg-open-badge">
-          <div className={`dot${shop.isOpen === false ? ' closed' : ''}`} />
-          {shop.isOpen === false ? 'Closed' : 'Open'}
+        <div className={`scg-open-badge${isOpen ? ' is-open' : ' is-closed'}`}>
+          <div className="dot" />
+          {isOpen ? 'Open now' : 'Closed'}
         </div>
         <div className="scg-avatar">{shop.emoji || <Store size={20} />}</div>
       </div>
@@ -108,6 +111,7 @@ function ShopGridCard({
         <div className="scg-addr">
           {[shop.address, shop.city].filter(Boolean).join(', ') || 'Location unavailable'}
         </div>
+        {shop.openingHours ? <div className="scg-hours">{shop.openingHours}</div> : null}
         <div className="scg-meta">
           {shop.productsCount != null && (
             <div className="scg-stat">Products {shop.productsCount}</div>

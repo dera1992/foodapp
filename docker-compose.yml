@@ -19,6 +19,16 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   web:
     build: .
     command: >
@@ -35,8 +45,53 @@ services:
       ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
       DATABASE_URL: postgres://${POSTGRES_USER:-seafood}:${POSTGRES_PASSWORD:-seafood}@db:5432/${POSTGRES_DB:-seafood}
       DATABASE_ENGINE: ${DATABASE_ENGINE:-django.contrib.gis.db.backends.postgis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: >
+      bash -c "until pg_isready -h db -U ${POSTGRES_USER:-seafood} -d ${POSTGRES_DB:-seafood};
+      do echo 'Waiting for database...'; sleep 2; done;
+      celery -A seafood worker -l info"
+    volumes:
+      - .:/app
+    environment:
+      DEBUG: "1"
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+      DATABASE_URL: postgres://${POSTGRES_USER:-seafood}:${POSTGRES_PASSWORD:-seafood}@db:5432/${POSTGRES_DB:-seafood}
+      DATABASE_ENGINE: ${DATABASE_ENGINE:-django.contrib.gis.db.backends.postgis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: .
+    command: >
+      bash -c "until pg_isready -h db -U ${POSTGRES_USER:-seafood} -d ${POSTGRES_DB:-seafood};
+      do echo 'Waiting for database...'; sleep 2; done;
+      celery -A seafood beat -l info"
+    volumes:
+      - .:/app
+    environment:
+      DEBUG: "1"
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+      DATABASE_URL: postgres://${POSTGRES_USER:-seafood}:${POSTGRES_PASSWORD:-seafood}@db:5432/${POSTGRES_DB:-seafood}
+      DATABASE_ENGINE: ${DATABASE_ENGINE:-django.contrib.gis.db.backends.postgis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 #  pgadmin:

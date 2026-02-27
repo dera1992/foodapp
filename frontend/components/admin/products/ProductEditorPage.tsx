@@ -23,7 +23,8 @@ import { cn } from '@/lib/utils/cn';
 import styles from './ProductEditorPage.module.css';
 
 type ProductStatus = 'active' | 'draft' | 'out_of_stock' | 'expired';
-type DeliveryOption = 'delivery' | 'pickup' | 'both';
+type DeliveryOption = '' | 'delivery' | 'pickup' | 'both' | 'now';
+type DeliveryTimeOption = '' | 'now' | '1-2days' | '2-3days' | '3-4days' | '4-5days' | '5-6days';
 type ProductLabel = '' | 'new' | 'hot' | 'last_few' | 'organic';
 
 type ProductForm = {
@@ -38,12 +39,16 @@ type ProductForm = {
   status: ProductStatus;
   label: ProductLabel;
   delivery: DeliveryOption;
+  deliveryTime: DeliveryTimeOption;
+  brand: string;
+  weight: string;
   quantity: string;
   available: boolean;
   existingImages: { id?: string; url: string }[];
   images: File[];
   imagePreviews: string[];
   description: string;
+  nutrition: string;
 };
 
 type ProductTemplate = {
@@ -53,6 +58,11 @@ type ProductTemplate = {
   subcategory: string;
   price: string;
   description: string;
+  nutrition: string;
+  delivery: DeliveryOption;
+  deliveryTime: DeliveryTimeOption;
+  brand: string;
+  weight: string;
 };
 
 type Category = {
@@ -75,12 +85,16 @@ const INITIAL_FORM: ProductForm = {
   status: 'active',
   label: '',
   delivery: 'both',
+  deliveryTime: '',
+  brand: '',
+  weight: '',
   quantity: '',
   available: true,
   existingImages: [],
   images: [],
   imagePreviews: [],
-  description: ''
+  description: '',
+  nutrition: ''
 };
 
 const FALLBACK_CATEGORIES: Category[] = [
@@ -214,7 +228,12 @@ function normalizeTemplates(payload: unknown): ProductTemplate[] {
         category,
         subcategory: pickString(entry, ['subcategory']),
         price: pickString(entry, ['price']),
-        description: pickString(entry, ['description'])
+        description: pickString(entry, ['description']),
+        nutrition: pickString(entry, ['nutrition', 'nutrition_info']),
+        delivery: (pickString(entry, ['delivery']) as DeliveryOption) || '',
+        deliveryTime: (pickString(entry, ['delivery_time', 'deliveryTime']) as DeliveryTimeOption) || '',
+        brand: pickString(entry, ['brand']),
+        weight: pickString(entry, ['weight'])
       } satisfies ProductTemplate;
     })
     .filter((item): item is ProductTemplate => Boolean(item));
@@ -273,12 +292,16 @@ function mapProductToForm(payload: unknown): ProductForm {
     status: (pickString(record, ['status']) as ProductStatus) || 'active',
     label: (pickString(record, ['label']) as ProductLabel) || '',
     delivery: (pickString(record, ['delivery', 'delivery_mode', 'delivery_type']) as DeliveryOption) || 'both',
+    deliveryTime: (pickString(record, ['delivery_time', 'deliveryTime']) as DeliveryTimeOption) || '',
+    brand: pickString(record, ['brand']),
+    weight: pickString(record, ['weight']),
     quantity: pickString(record, ['quantity', 'stock']),
     available: toBoolValue(record.available, true),
     existingImages,
     images: [],
     imagePreviews,
-    description: pickString(record, ['description'])
+    description: pickString(record, ['description']),
+    nutrition: pickString(record, ['nutrition', 'nutrition_info'])
   };
 }
 
@@ -641,7 +664,12 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       category: template.category,
       subcategory: template.subcategory,
       price: template.price,
-      description: template.description
+      description: template.description,
+      nutrition: template.nutrition,
+      delivery: template.delivery || form.delivery,
+      deliveryTime: template.deliveryTime,
+      brand: template.brand,
+      weight: template.weight,
     });
   };
 
@@ -951,12 +979,14 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
 
   const saveRequest = async (url: string, method: 'POST' | 'PUT', body: FormData) => {
     const csrf = getCookie('csrftoken');
+    const accessToken = getCookie('access_token');
     const response = await fetch(url, {
       method,
       body,
       credentials: 'include',
       headers: {
         ...(csrf ? { 'X-CSRFToken': csrf } : {}),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         'X-Requested-With': 'XMLHttpRequest'
       }
     });
@@ -982,12 +1012,15 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       fd.append('status', statusOverride ?? form.status);
       fd.append('label', form.label);
       fd.append('delivery', form.delivery);
+      fd.append('delivery_time', form.deliveryTime);
+      fd.append('brand', form.brand);
+      fd.append('weight', form.weight);
       fd.append('quantity', form.quantity);
       fd.append('available', String(form.available));
       fd.append('description', form.description);
+      fd.append('nutrition', form.nutrition);
       form.images.forEach((image) => fd.append('images', image));
 
-      const promptUrl = isEditMode && productId ? `/api/products/${productId}/` : '/api/products/create/';
       const backendPath = isEditMode && productId ? `${apiPaths.adminProducts}${productId}/` : apiPaths.createProduct;
       const fallbackUrl = backendUrl(backendPath);
       const method: 'POST' | 'PUT' = isEditMode ? 'PUT' : 'POST';
@@ -995,7 +1028,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       let res: Response | null = null;
       let lastError: unknown;
 
-      for (const url of [promptUrl, fallbackUrl]) {
+      for (const url of [fallbackUrl]) {
         try {
           res = await saveRequest(url, method, fd);
           if (res.ok) break;
@@ -1218,14 +1251,32 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
 	          </div>
 	          {taxonomyError ? <div className={styles.taxonomyError}>{taxonomyError}</div> : null}
 
-          <FormField
-            label="Barcode"
-            name="barcode"
-            hint="optional - scan or type"
-            value={form.barcode}
-            onChange={(value) => update({ barcode: value })}
-            placeholder="e.g. 5000119314527"
-          />
+          <div className={styles.grid3}>
+            <FormField
+              label="Barcode"
+              name="barcode"
+              hint="optional - scan or type"
+              value={form.barcode}
+              onChange={(value) => update({ barcode: value })}
+              placeholder="e.g. 5000119314527"
+            />
+            <FormField
+              label="Brand"
+              name="brand"
+              hint="optional"
+              value={form.brand}
+              onChange={(value) => update({ brand: value })}
+              placeholder="e.g. Heinz"
+            />
+            <FormField
+              label="Weight"
+              name="weight"
+              hint="optional"
+              value={form.weight}
+              onChange={(value) => update({ weight: value })}
+              placeholder="e.g. 500g / 1kg / 2L"
+            />
+          </div>
         </SectionCard>
 
         <SectionCard icon={<Wallet size={16} />} title="Pricing">
@@ -1235,7 +1286,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
                 Original Price <span className={styles.required}>*</span>
               </label>
               <div className={styles.priceWrap}>
-                <span className={styles.pricePrefix}>GBP</span>
+                <span className={styles.pricePrefix}>£</span>
                 <input
                   id="price"
                   name="price"
@@ -1253,7 +1304,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
             <div className={styles.field}>
               <label htmlFor="discount_price" className={styles.label}>Discount / Sale Price</label>
               <div className={styles.priceWrap}>
-                <span className={styles.pricePrefix}>GBP</span>
+                <span className={styles.pricePrefix}>£</span>
                 <input
                   id="discount_price"
                   name="discount_price"
@@ -1277,7 +1328,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
           ) : null}
 
           <div className={styles.currencyNote}>
-            <span className={styles.currencyPill}>GBP</span>
+            <span className={styles.currencyPill}>£</span>
             <span>Unit:</span>
             <span className={styles.currencyPill}>kg / each</span>
           </div>
@@ -1334,7 +1385,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
             />
           </div>
 
-          <div className={styles.grid2}>
+          <div className={styles.grid3}>
             <FormField
               label="Delivery"
               name="delivery"
@@ -1342,9 +1393,25 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
               value={form.delivery}
               onChange={(value) => update({ delivery: value as DeliveryOption })}
               options={[
+                { value: 'now', label: 'Now' },
                 { value: 'delivery', label: 'Delivery available' },
                 { value: 'pickup', label: 'Pickup only' },
                 { value: 'both', label: 'Delivery & Pickup' }
+              ]}
+            />
+            <FormField
+              label="Delivery Time"
+              name="delivery_time"
+              type="select"
+              value={form.deliveryTime}
+              onChange={(value) => update({ deliveryTime: value as DeliveryTimeOption })}
+              options={[
+                { value: 'now', label: 'Now' },
+                { value: '1-2days', label: '1-2 days' },
+                { value: '2-3days', label: '2-3 days' },
+                { value: '3-4days', label: '3-4 days' },
+                { value: '4-5days', label: '4-5 days' },
+                { value: '5-6days', label: '5-6 days' }
               ]}
             />
 
@@ -1413,6 +1480,20 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
               onChange={(e) => update({ description: e.target.value })}
               className={styles.textarea}
               placeholder="Describe the product - ingredients, weight, flavour, storage info..."
+            />
+          </div>
+          <div className={styles.fieldNoMargin}>
+            <label htmlFor="nutrition" className={styles.label}>
+              Nutrition Information <span className={styles.hint}>(optional)</span>
+            </label>
+            <textarea
+              id="nutrition"
+              name="nutrition"
+              rows={4}
+              value={form.nutrition}
+              onChange={(e) => update({ nutrition: e.target.value })}
+              className={styles.textarea}
+              placeholder="Add nutrition details (calories, fat, protein, carbs, allergens, etc.)."
             />
           </div>
         </SectionCard>

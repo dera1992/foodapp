@@ -2,11 +2,15 @@ import { Suspense } from 'react';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { ProductListClient } from '@/components/products/ProductListClient';
 import { getProducts } from '@/lib/api/endpoints';
+import { getSession } from '@/lib/auth/session';
 
 export const metadata = { title: 'Browse Products — BunchFood' };
 
 export default async function ProductsPage() {
-  const products = await getProducts().then((r) => r.data).catch(() => []);
+  const [products, session] = await Promise.all([
+    getProducts().then((r) => r.data).catch(() => []),
+    getSession(),
+  ]);
 
   const categoriesSet = new Set<string>();
   for (const p of products) {
@@ -24,7 +28,11 @@ export default async function ProductsPage() {
         <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Products' }]} />
       </div>
       <Suspense>
-        <ProductListClient products={products} allCategories={allCategories} />
+        <ProductListClient
+          products={products}
+          allCategories={allCategories}
+          isAuthenticated={session.isAuthenticated}
+        />
       </Suspense>
     </>
   );

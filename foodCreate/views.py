@@ -15,8 +15,24 @@ openpyxl = None
 if importlib.util.find_spec("openpyxl"):
     openpyxl = importlib.import_module("openpyxl")
 
-from .models import Products, ProductsImages, Category, SubCategory
+from .models import (
+    Category,
+    DayOption,
+    DeliveryMethod,
+    LabelOption,
+    Products,
+    ProductsImages,
+    StatusOption,
+    SubCategory,
+)
 from .forms import AdsForm, AdsEditForm
+
+
+def get_option_by_code(model_class, code):
+    if not code:
+        return None
+    return model_class.objects.filter(code=str(code).strip()).first()
+
 
 @login_required
 @transaction.atomic
@@ -46,16 +62,16 @@ def postAd(request):
             product = post_form.save(commit=False)
             product.shop = shop
             if request.POST.get("save_draft"):
-                product.status = "draft"
+                product.status = get_option_by_code(StatusOption, "draft")
                 product.is_active = False
-            elif product.status != "draft":
+            elif not product.status or product.status.code != "draft":
                 product.is_active = True
             product.save()
 
             images = request.FILES.getlist("product_images")
             for image in images:
                 photo = ProductsImages(products=product, product_image=image)
-                photo.save()  # compression happens here
+                photo.save()
             messages.success(request, "Your product has been created successfully.")
             return redirect('home:allads_list')
         else:
@@ -96,9 +112,9 @@ def editAd(request, pk):
             post_form = post_form.save(commit=False)
             post_form.shop = product.shop
             if request.POST.get("save_draft"):
-                post_form.status = "draft"
+                post_form.status = get_option_by_code(StatusOption, "draft")
                 post_form.is_active = False
-            elif post_form.status != "draft":
+            elif not post_form.status or post_form.status.code != "draft":
                 post_form.is_active = True
             post_form.save()
 
@@ -115,7 +131,7 @@ def editAd(request, pk):
             images = request.FILES.getlist("product_images")
             for image in images:
                 photo = ProductsImages(products=product, product_image=image)
-                photo.save()  # compression automatically applied
+                photo.save()
 
             messages.success(request, f"{product.title} has been successfully updated!")
             return redirect('home:allads_list')
@@ -176,9 +192,11 @@ def lookup_product(request):
         "price": str(product.price),
         "discount_price": str(product.discount_price) if product.discount_price else "",
         "description": product.description,
-        "label": product.label,
-        "status": product.status,
-        "delivery": product.delivery,
+        "nutrition": product.nutrition,
+        "label": product.label.code if product.label else "",
+        "status": product.status.code if product.status else "",
+        "delivery": product.delivery.code if product.delivery else "",
+        "delivery_time": product.delivery_time.code if product.delivery_time else "",
         "available": product.available,
         "barcode": product.barcode,
         "stock": product.stock,
@@ -314,9 +332,11 @@ def _handle_product_import(shop, rows):
             price=normalized.get("price"),
             discount_price=normalized.get("discount_price") or None,
             description=normalized.get("description") or "",
-            label=normalized.get("label") or None,
-            status=normalized.get("status") or "available",
-            delivery=normalized.get("delivery") or None,
+            nutrition=normalized.get("nutrition") or "",
+            label=get_option_by_code(LabelOption, normalized.get("label")),
+            status=get_option_by_code(StatusOption, normalized.get("status")) or get_option_by_code(StatusOption, "available"),
+            delivery=get_option_by_code(DeliveryMethod, normalized.get("delivery")),
+            delivery_time=get_option_by_code(DayOption, normalized.get("delivery_time")),
             available=str(normalized.get("available")).lower() in {"true", "1", "yes"},
             barcode=str(normalized.get("barcode") or "").strip(),
             stock=int(normalized.get("stock") or 0),
@@ -327,7 +347,7 @@ def _handle_product_import(shop, rows):
             "title": product.title,
             "category": category.name,
             "price": product.price,
-            "status": product.status,
+            "status": product.status.code if product.status else "",
         })
 
     return created_count, preview_rows, errors

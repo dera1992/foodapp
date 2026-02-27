@@ -1,19 +1,21 @@
-'use client';
+import { getShops } from '@/lib/api/endpoints';
+import { ShopPortalLayout } from '@/components/shop-portal/ShopPortalLayout';
 
-import { useState } from 'react';
-import { AdminSidebar } from '@/components/layout/AdminSidebar';
-import { AdminTopbar } from '@/components/layout/AdminTopbar';
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const shops = await getShops().then((r) => r.data).catch(() => []);
+  const shop = shops[0] ?? null;
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const shopName = shop?.name ?? 'My Shop';
+  const initials = shopName
+    .split(' ')
+    .map((w: string) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <div className="bf-admin-layout">
-      <AdminSidebar open={isSidebarOpen} />
-      <div className="bf-admin-main">
-        <AdminTopbar onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)} />
-        <main className="bf-admin-content">{children}</main>
-      </div>
-    </div>
+    <ShopPortalLayout shopName={shopName} initials={initials}>
+      {children}
+    </ShopPortalLayout>
   );
 }

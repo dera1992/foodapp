@@ -12,8 +12,8 @@ from django.utils.encoding import force_bytes
 from account.tokens import account_activation_token
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
-from django.core.mail import EmailMessage, send_mail
 from django.template.loader import get_template
+from account.tasks import send_email_message_task
 
 from .forms import (
     ProfileForm, ShopInfoForm, ShopAddressForm, ShopDocumentForm, PlanSelectionForm,
@@ -44,11 +44,13 @@ def register(request):
                 'token': account_activation_token.make_token(user),
             })
             to_email = user_form.cleaned_data.get('email')
-            email = EmailMessage(
-                subject, message,from_email='Bunchfood <bunchfood@gmail.com>', to=[to_email]
+            send_email_message_task.delay(
+                subject,
+                message,
+                'Bunchfood <bunchfood@gmail.com>',
+                [to_email],
+                True,
             )
-            email.content_subtype = 'html'
-            email.send()
             messages.success(request, 'An email has been sent to you,please go and activate your account')
             return redirect('home:home')
     else:
@@ -254,7 +256,7 @@ def shop_onboarding(request, step='info'):
                 .values_list("email", flat=True)
             )
             if admin_emails:
-                send_mail(
+                send_email_message_task.delay(
                     "New shop account opened",
                     (
                         f"A new shop account has been opened.\n\n"
@@ -264,7 +266,7 @@ def shop_onboarding(request, step='info'):
                     ),
                     getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
                     admin_emails,
-                    fail_silently=True,
+                    False,
                 )
 
             request.user.role = 'shop'

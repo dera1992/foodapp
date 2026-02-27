@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ChevronDown, Heart, Mail, Mic, MicOff, Search, ShoppingCart } from 'lucide-react';
 import type { Session } from '@/lib/auth/session';
-import { authLogout, getThreads } from '@/lib/api/endpoints';
+import { authLogout, getCart, getThreads, getWishlist } from '@/lib/api/endpoints';
 
 type BrowserSpeechRecognition = {
   lang: string;
@@ -45,20 +45,14 @@ export function Navbar({ session }: { session?: Session }) {
   const [recognition, setRecognition] = useState<BrowserSpeechRecognition | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [cartCount, setCartCount] = useState(0);
+  const [wishlistCount, setWishlistCount] = useState(0);
   const [messageNotice, setMessageNotice] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const unreadCountRef = useRef(0);
   const unreadRefreshRef = useRef<(() => Promise<void>) | null>(null);
   const isAuthenticated = Boolean(session?.isAuthenticated);
 
-  const dashboardHref =
-    session?.role === 'admin' || session?.role === 'shop'
-      ? '/admin'
-      : '/account/analytics';
-  const ordersHref =
-    session?.role === 'admin' || session?.role === 'shop'
-      ? '/admin/orders'
-      : '/account/orders';
   const displayName = session?.role ? formatRole(session.role) : 'Account';
   const displayEmail = session?.userId ? `user-${session.userId}@bunchfood.com` : '';
   const initials = displayName.charAt(0).toUpperCase();
@@ -144,6 +138,42 @@ export function Navbar({ session }: { session?: Session }) {
     void unreadRefreshRef.current?.();
   }, [isAuthenticated, pathname]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setCartCount(0);
+      setWishlistCount(0);
+      return;
+    }
+    let active = true;
+
+    const loadCounts = async () => {
+      const [cartResult, wishlistResult] = await Promise.allSettled([getCart(), getWishlist()]);
+      if (!active) return;
+      const nextCart =
+        cartResult.status === 'fulfilled'
+          ? cartResult.value.items.length
+          : 0;
+      const nextWishlist = wishlistResult.status === 'fulfilled' ? wishlistResult.value.data.length : 0;
+      setCartCount(nextCart);
+      setWishlistCount(nextWishlist);
+    };
+
+    void loadCounts();
+    const intervalId = window.setInterval(loadCounts, 15000);
+    const onRefreshCounts = () => {
+      void loadCounts();
+    };
+    window.addEventListener('cart:refresh', onRefreshCounts);
+    window.addEventListener('wishlist:refresh', onRefreshCounts);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('cart:refresh', onRefreshCounts);
+      window.removeEventListener('wishlist:refresh', onRefreshCounts);
+    };
+  }, [isAuthenticated]);
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const params = new URLSearchParams();
@@ -195,11 +225,11 @@ export function Navbar({ session }: { session?: Session }) {
             ) : null}
             <Link href="/wishlist" className="bf-wishlist-btn" title="Wishlist" aria-label="Wishlist">
               <Heart size={18} />
-              <span className="bf-wishlist-badge">0</span>
+              {wishlistCount > 0 ? <span className="bf-wishlist-badge">{wishlistCount}</span> : null}
             </Link>
             <Link prefetch={false} href="/cart" className="bf-cart-icon">
               <ShoppingCart size={14} />
-              <span className="bf-cart-badge">0</span>
+              {cartCount > 0 ? <span className="bf-cart-badge">{cartCount}</span> : null}
             </Link>
             {isAuthenticated ? (
               <div className="bf-auth-menu-wrap" ref={menuRef}>
@@ -223,31 +253,57 @@ export function Navbar({ session }: { session?: Session }) {
                       <div className="bf-dd-role"><div className="bf-dd-role-dot" />{formatRole(session?.role)}</div>
                     </div>
                     <div className="bf-dd-nav">
-                      <Link href={dashboardHref} className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-                        <div className="bf-dd-ic">📊</div>
-                        <span className="bf-dd-lbl">Dashboard</span>
-                        <ChevronRightIcon className="bf-dd-arr" />
-                      </Link>
-                      <Link href="/account/analytics" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-                        <div className="bf-dd-ic">📈</div>
-                        <span className="bf-dd-lbl">My Analytics</span>
-                        <ChevronRightIcon className="bf-dd-arr" />
-                      </Link>
-                      <Link href={ordersHref} className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-                        <div className="bf-dd-ic">📋</div>
-                        <span className="bf-dd-lbl">Order Status</span>
-                        <ChevronRightIcon className="bf-dd-arr" />
-                      </Link>
-                      <Link href="/account/notifications" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-                        <div className="bf-dd-ic">🔔</div>
-                        <span className="bf-dd-lbl">Shop notifications</span>
-                        <ChevronRightIcon className="bf-dd-arr" />
-                      </Link>
-                      <Link href="/account/settings" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-                        <div className="bf-dd-ic">⚙️</div>
-                        <span className="bf-dd-lbl">Settings</span>
-                        <ChevronRightIcon className="bf-dd-arr" />
-                      </Link>
+                      {/* Shop-specific links */}
+                      {(session?.role === 'shop' || session?.role === 'admin') && (<>
+                        <Link href="/admin" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📊</div><span className="bf-dd-lbl">Dashboard</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/admin/analytics" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📈</div><span className="bf-dd-lbl">Analytics</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/admin/orders" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📋</div><span className="bf-dd-lbl">Orders</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/admin/products" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📦</div><span className="bf-dd-lbl">Products</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/admin/customers" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">👥</div><span className="bf-dd-lbl">Customers</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/admin/settings" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">⚙️</div><span className="bf-dd-lbl">Settings</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                      </>)}
+
+                      {/* Dispatcher-specific links */}
+                      {session?.role === 'dispatcher' && (<>
+                        <Link href="/dispatcher/dashboard" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📊</div><span className="bf-dd-lbl">Dashboard</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/dispatcher/profile" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">👤</div><span className="bf-dd-lbl">My Profile</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/dispatcher/settings" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">⚙️</div><span className="bf-dd-lbl">Settings</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                      </>)}
+
+                      {/* Customer-specific links */}
+                      {session?.role === 'customer' && (<>
+                        <Link href="/account/analytics" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📊</div><span className="bf-dd-lbl">Dashboard</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/account/orders" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">📋</div><span className="bf-dd-lbl">My Orders</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/wishlist" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">❤️</div><span className="bf-dd-lbl">Wishlist</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                        <Link href="/account/settings" className="bf-dd-item" role="menuitem" onClick={() => setAccountOpen(false)}>
+                          <div className="bf-dd-ic">⚙️</div><span className="bf-dd-lbl">Settings</span><ChevronRightIcon className="bf-dd-arr" />
+                        </Link>
+                      </>)}
+
                       <div className="bf-dd-sep" />
                       <button type="button" className="bf-dd-item bf-dd-item-out" role="menuitem" onClick={handleLogout}>
                         <div className="bf-dd-ic">🚪</div>

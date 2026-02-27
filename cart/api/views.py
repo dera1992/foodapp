@@ -38,6 +38,8 @@ class CartViewSet(viewsets.ViewSet):
                     "quantity": item["quantity"],
                     "price": str(item["price"]),
                     "total_price": str(item["total_price"]),
+                    "old_price": str(product.price) if product and product.price is not None else None,
+                    "discount_price": str(product.discount_price) if product and product.discount_price is not None else None,
                 }
             )
         return Response({"items": items, "count": len(cart), "total": str(cart.get_total_price())})

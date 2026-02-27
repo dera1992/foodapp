@@ -12,7 +12,7 @@ import type { Session } from '@/lib/auth/session';
 import {
   getMyProfile, createProfile, patchProfile,
   getMyDispatcherProfile, patchDispatcherProfile,
-  authPasswordChange,
+  authPasswordChange, authMe,
 } from '@/lib/api/endpoints';
 import type { CustomerProfile, DispatcherProfile } from '@/types/api';
 
@@ -89,6 +89,10 @@ function buildCustomerPayload(draft: ProfileForm): Partial<CustomerProfile> {
     delivery_note: draft.customerDeliveryNote || undefined,
     dietary_preference: draft.customerDietary || undefined,
     household_size: draft.customerHouseholdSize || undefined,
+    shop_name: draft.shopName || undefined,
+    shop_category: draft.shopCategory || undefined,
+    opening_hours: draft.shopHours || undefined,
+    shop_description: draft.shopDescription || undefined,
   };
 }
 
@@ -107,7 +111,7 @@ function roleMeta(role: UserRole): RoleMeta {
   if (role === 'admin') {
     return {
       title: 'Admin Settings',
-      subtitle: 'Manage shared account details and review customer, shop, and dispatcher profile settings in one place.',
+      subtitle: 'Manage your admin account profile and security settings.',
       badge: 'Admin',
       icon: <ShieldCheck className="h-5 w-5" />,
       accent: 'from-emerald-700 to-teal-500'
@@ -143,11 +147,7 @@ function roleMeta(role: UserRole): RoleMeta {
   };
 }
 
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function normalizeProfilePayload(payload: unknown, session?: Session): ProfileForm {
+function normalizeProfilePayload(payload: unknown): ProfileForm {
   const raw =
     Array.isArray(payload) ? payload[0] :
     payload && typeof payload === 'object' && Array.isArray((payload as { results?: unknown[] }).results)
@@ -169,12 +169,10 @@ function normalizeProfilePayload(payload: unknown, session?: Session): ProfileFo
     return '';
   };
 
-  const role = session?.role ?? 'customer';
-
   return {
     ...PROFILE_DEFAULTS,
-    displayName: pick('full_name', 'name', 'username', 'first_name') || `${titleCase(role)} User`,
-    email: pick('email') || (session?.userId ? `user-${session.userId}@bunchfood.com` : ''),
+    displayName: pick('full_name', 'name', 'username', 'first_name'),
+    email: pick('email'),
     phone: pick('phone', 'phone_number', 'mobile'),
     city: pick('city', 'town'),
     address: pick('address', 'location'),
@@ -249,8 +247,8 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
   const role = (session?.role ?? 'customer') as UserRole;
   const meta = roleMeta(role);
 
-  const [profile, setProfile] = useState<ProfileForm>(() => normalizeProfilePayload(null, session));
-  const [draft, setDraft] = useState<ProfileForm>(() => normalizeProfilePayload(null, session));
+  const [profile, setProfile] = useState<ProfileForm>(() => normalizeProfilePayload(null));
+  const [draft, setDraft] = useState<ProfileForm>(() => normalizeProfilePayload(null));
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -271,23 +269,39 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
       setLoadingProfile(true);
       setProfileError('');
       try {
+        let accountEmail = '';
+        const tokenMatch = document.cookie.match(/(?:^|; )access_token=([^;]*)/);
+        const accessToken = tokenMatch ? decodeURIComponent(tokenMatch[1]) : '';
+        if (accessToken) {
+          try {
+            const me = await authMe(accessToken);
+            if (typeof me?.email === 'string' && me.email.trim()) {
+              accountEmail = me.email.trim();
+            }
+          } catch {
+            // keep profile/email fallback below
+          }
+        }
+
         const raw = role === 'dispatcher'
           ? await getMyDispatcherProfile()
           : await getMyProfile();
         if (cancelled) return;
         if (raw) {
           setProfileId(raw.id);
-          const normalized = normalizeProfilePayload(raw, session);
-          setProfile(normalized);
-          setDraft(normalized);
+          const normalized = normalizeProfilePayload(raw);
+          const resolved = accountEmail ? { ...normalized, email: accountEmail } : normalized;
+          setProfile(resolved);
+          setDraft(resolved);
         } else {
-          const fallback = normalizeProfilePayload(null, session);
-          setProfile(fallback);
-          setDraft(fallback);
+          const fallback = normalizeProfilePayload(null);
+          const resolved = accountEmail ? { ...fallback, email: accountEmail } : fallback;
+          setProfile(resolved);
+          setDraft(resolved);
         }
       } catch {
         if (!cancelled) {
-          const fallback = normalizeProfilePayload(null, session);
+          const fallback = normalizeProfilePayload(null);
           setProfile(fallback);
           setDraft(fallback);
           setProfileError('Profile data could not be loaded. You can still edit and save.');
@@ -374,7 +388,7 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
     }
   };
 
-  const headerName = role === 'shop' || role === 'admin' ? (profile.shopName || profile.displayName) : profile.displayName;
+  const headerName = role === 'shop' ? (profile.shopName || profile.displayName) : profile.displayName;
 
   return (
     <div className="bg-brand-background py-8 md:py-10">
@@ -445,7 +459,15 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
                 </div>
                 <div>
                   <FieldLabel htmlFor="email" label="Email address" />
-                  <Input id="email" type="email" value={draft.email} disabled={!editing || loadingProfile} onChange={(e) => updateDraft('email', e.target.value)} />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={draft.email}
+                    disabled
+                    readOnly
+                    className="cursor-not-allowed bg-slate-100 text-brand-muted"
+                    onChange={(e) => updateDraft('email', e.target.value)}
+                  />
                 </div>
                 <div>
                   <FieldLabel htmlFor="phone" label="Phone number" />
@@ -468,7 +490,7 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
               </div>
             </Card>
 
-            {(role === 'customer' || role === 'admin') && (
+            {role === 'customer' && (
               <Card className="bg-white p-5 md:p-6">
                 <div className="mb-4">
                   <h3 className="text-base font-semibold text-brand-text">Customer Preferences</h3>
@@ -498,7 +520,7 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
               </Card>
             )}
 
-            {(role === 'shop' || role === 'admin') && (
+            {role === 'shop' && (
               <Card className="bg-white p-5 md:p-6">
                 <div className="mb-4">
                   <h3 className="text-base font-semibold text-brand-text">Shop Profile</h3>
@@ -532,7 +554,7 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
               </Card>
             )}
 
-            {(role === 'dispatcher' || role === 'admin') && (
+            {role === 'dispatcher' && (
               <Card className="bg-white p-5 md:p-6">
                 <div className="mb-4">
                   <h3 className="text-base font-semibold text-brand-text">Dispatch Details</h3>
@@ -665,3 +687,4 @@ export function SettingsDashboardPage({ session }: { session?: Session }) {
     </div>
   );
 }
+

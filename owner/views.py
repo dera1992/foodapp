@@ -12,10 +12,7 @@ from django.contrib.auth.decorators import login_required
 
 from owner.models import Affiliate
 from .forms import InformationForm
-from django.core.mail import send_mail
-from django.core.mail import EmailMessage
-from django.template.loader import get_template
-import random
+from account.tasks import send_email_message_task
 
 @login_required
 def my_cart(request):
@@ -76,10 +73,13 @@ def create_contact(request):
             message ='Hello "{}" sent you a message below through Bunchfood contact form \n{}'.format( post['name'], post['message'])
             to_email = ['ezechdr16@gmail.com']
             from_email = post['email']
-            email = EmailMessage(
-                subject, message, from_email=from_email, to=to_email
+            send_email_message_task.delay(
+                subject,
+                message,
+                from_email,
+                to_email,
+                False,
             )
-            email.send()
             post_info.save()
 
             # text = form.cleaned_data['headline','content']

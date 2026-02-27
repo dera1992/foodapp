@@ -54,9 +54,9 @@ else:
 
 @admin.register(Shop)
 class ShopAdmin(ShopAdminBase):
-    list_display = ['name', 'owner', 'is_verified', 'created_at']
+    list_display = ['name', 'id_number', 'owner', 'is_verified', 'created_at']
     list_filter = ['is_verified', 'created_at']
-    search_fields = ['name', 'owner__email']
+    search_fields = ['name', 'id_number', 'owner__email']
 
 
 @admin.register(DispatcherProfile)

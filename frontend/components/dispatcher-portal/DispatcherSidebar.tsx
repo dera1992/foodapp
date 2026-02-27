@@ -10,6 +10,7 @@ const links: NavLink[] = [
   { href: '/dispatcher/dashboard', label: 'Dashboard',  icon: '📊' },
   { href: '/dispatcher/profile',   label: 'My Profile',  icon: '👤' },
   { href: '/messages',             label: 'Messages',    icon: '💬' },
+  { href: '/dispatcher/settings',  label: 'Settings',    icon: '⚙️' },
 ];
 
 export function DispatcherSidebar({ open = false, initials = 'DX', name = 'Dispatcher' }: {
@@ -22,9 +23,9 @@ export function DispatcherSidebar({ open = false, initials = 'DX', name = 'Dispa
   return (
     <aside className={cn('bf-admin-sidebar', open && 'open')}>
       <div className="bf-admin-sidebar-head">
-        <p className="bf-admin-logo">
+        <Link href="/" className="bf-admin-logo">
           bunch<span>food</span>
-        </p>
+        </Link>
         <p className="bf-admin-subtitle">Dispatcher Portal</p>
       </div>
       <nav className="flex-1 space-y-1 p-3">

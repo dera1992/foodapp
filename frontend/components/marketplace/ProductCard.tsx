@@ -1,28 +1,82 @@
-import Image from 'next/image';
+'use client';
+
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Heart } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { PriceBlock } from './PriceBlock';
+import { useRouter } from 'next/navigation';
+import { Heart, ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types/api';
+import { addToCart } from '@/lib/api/endpoints';
+import { ApiError } from '@/lib/api/client';
+
+function getFallbackEmoji(category?: unknown): string {
+  const cat = String(category ?? '').toLowerCase();
+  if (cat.includes('veg')) return '🥦';
+  if (cat.includes('fruit')) return '🍎';
+  if (cat.includes('fish') || cat.includes('seafood')) return '🐟';
+  if (cat.includes('meat') || cat.includes('chicken')) return '🥩';
+  if (cat.includes('grain') || cat.includes('rice')) return '🌾';
+  return '🛒';
+}
 
 export function ProductCard({ product }: { product: Product }) {
+  const router = useRouter();
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const productName = typeof product.name === 'string' && product.name.trim() ? product.name : 'Product';
+  const productDescription = (product.shortDescription || product.description || 'Fresh product from a local shop.').trim();
+  const category = product.category || product.categories?.[0] || '';
+  const price = typeof product.price === 'number' ? product.price : Number(product.price) || 0;
+  const oldPrice =
+    typeof product.oldPrice === 'number'
+      ? product.oldPrice
+      : product.oldPrice != null
+        ? Number(product.oldPrice) || null
+        : null;
+  const fallbackEmoji = getFallbackEmoji(category);
+  const productId = String(product.id ?? '');
+
+  const onAddToCart = () => {
+    startTransition(async () => {
+      try {
+        await addToCart(productId, 1);
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('cart:refresh'));
+        setNotice('Added to cart');
+        window.setTimeout(() => setNotice(null), 1800);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          router.push('/login?next=%2Fwishlist');
+          return;
+        }
+        setNotice('Could not add to cart');
+        window.setTimeout(() => setNotice(null), 2200);
+      }
+    });
+  };
+
   return (
-    <Card className="overflow-hidden">
-      <Link href={`/products/${product.id}`} className="relative block h-44 bg-brand-primaryLight/40">
-        <Image src={product.image || '/placeholder-product.svg'} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
+    <article className="product-card">
+      <Link href={`/products/${productId}`} className="product-img" aria-label={`View ${productName}`}>
+        {product.image ? <img src={product.image} alt={productName} /> : <span>{fallbackEmoji}</span>}
+        <span className="wishlist-card-heart" aria-hidden="true">
+          <Heart size={15} />
+        </span>
       </Link>
-      <div className="space-y-3 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-brand-muted">{product.category || 'Fresh deal'}</p>
-        <h3 className="line-clamp-2 text-lg font-semibold text-brand-text">{product.name}</h3>
-        <PriceBlock price={product.price} oldPrice={product.oldPrice ?? undefined} />
-        <div className="flex gap-2">
-          <Button className="flex-1">Add to cart</Button>
-          <Button variant="ghost" className="px-3" aria-label="Add to wishlist">
-            <Heart className="h-4 w-4" />
-          </Button>
+      <div className="product-body">
+        <Link href={`/products/${productId}`} className="product-name" style={{ display: 'block', textDecoration: 'none' }}>
+          {productName}
+        </Link>
+        <p className="product-desc">{productDescription}</p>
+        <div className="product-footer">
+          <div className="prices">
+            <span className="p-new">£{price.toFixed(2)}</span>
+            {oldPrice ? <span className="p-old">£{oldPrice.toFixed(2)}</span> : null}
+          </div>
+          <button type="button" className="add-btn" onClick={onAddToCart} disabled={isPending} aria-label={`Add ${productName} to cart`}>
+            <ShoppingCart size={16} />
+          </button>
         </div>
+        {notice ? <p className="product-weight" style={{ marginTop: 8 }}>{notice}</p> : null}
       </div>
-    </Card>
+    </article>
   );
 }

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, SubCategory, Products, ProductsImages, ReviewRating
+from .models import Category, DayOption, DeliveryMethod, LabelOption, Products, ProductsImages, ReviewRating, StatusOption, SubCategory
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,6 +14,31 @@ class SubCategorySerializer(serializers.ModelSerializer):
 
 
 class ProductsSerializer(serializers.ModelSerializer):
+    label = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=LabelOption.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    status = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=StatusOption.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    delivery = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=DeliveryMethod.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    delivery_time = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=DayOption.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+
     class Meta:
         model = Products
         fields = "__all__"

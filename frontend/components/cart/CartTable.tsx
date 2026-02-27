@@ -53,7 +53,12 @@ export function CartTable({ items, loading = false, onQuantityChange, onRemove }
                 View product
               </Link>
             </div>
-            <p className="bf-cart-price">{formatCurrency(item.unitPrice)}</p>
+            <p className="bf-cart-price">
+              {formatCurrency(item.unitPrice)}
+              {item.oldUnitPrice && item.oldUnitPrice > item.unitPrice ? (
+                <span className="ml-2 text-xs text-brand-muted line-through">{formatCurrency(item.oldUnitPrice)}</span>
+              ) : null}
+            </p>
             <div>
               <QuantityControl compact value={item.quantity} onChange={(next) => onQuantityChange(item.productId, next)} />
             </div>

@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import EmailMessage, send_mail
 from django.template.loader import get_template
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
@@ -36,6 +35,7 @@ from account.serializers import (
     UserSerializer,
 )
 from account.tokens import account_activation_token
+from account.tasks import send_email_message_task
 
 from .filters import ShopFilter, UserFilter
 from .permissions import IsOwnerOrReadOnly
@@ -122,14 +122,13 @@ class RegisterAPIView(AuthAPIView):
                 "activation_url": activation_url,
             }
         )
-        email = EmailMessage(
+        send_email_message_task.delay(
             "Activate Your Account",
             html_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
-            to=[user.email],
+            getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
+            [user.email],
+            True,
         )
-        email.content_subtype = "html"
-        email.send(fail_silently=True)
 
         response_payload = {
             "detail": "Registration successful. Please activate your account from the email sent.",
@@ -279,14 +278,13 @@ class PasswordResetRequestAPIView(AuthAPIView):
                 "user": user,
                 "reset_url": reset_url,
             })
-            email_msg = EmailMessage(
+            send_email_message_task.delay(
                 "Reset your Bunchfood password",
                 html_message,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
-                to=[user.email],
+                getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@seafood.local"),
+                [user.email],
+                True,
             )
-            email_msg.content_subtype = "html"
-            email_msg.send(fail_silently=True)
         return Response({"detail": "If the email exists, a reset link has been sent."})
 
 
@@ -390,14 +388,13 @@ class ShopPlanSetupAPIView(AccountAPIView):
         owner_html = get_template("registration/shop_created_owner.html").render(
             {"user": request.user, "shop": shop}
         )
-        owner_email = EmailMessage(
+        send_email_message_task.delay(
             "Your Bunchfood shop is under review",
             owner_html,
             from_email,
             [request.user.email],
+            True,
         )
-        owner_email.content_subtype = "html"
-        owner_email.send(fail_silently=True)
 
         # Email to all admins
         admin_emails = list(
@@ -410,14 +407,13 @@ class ShopPlanSetupAPIView(AccountAPIView):
             admin_html = get_template("registration/shop_created_admin.html").render(
                 {"shop": shop, "owner_email": request.user.email, "admin_url": admin_url}
             )
-            admin_msg = EmailMessage(
-                f"New shop account opened – {shop.name}",
+            send_email_message_task.delay(
+                f"New shop account opened - {shop.name}",
                 admin_html,
                 from_email,
                 admin_emails,
+                True,
             )
-            admin_msg.content_subtype = "html"
-            admin_msg.send(fail_silently=True)
 
         self._update_user_role(request.user, "shop")
         return Response({"detail": "Shop onboarding complete", "shop_id": shop.id})
@@ -466,14 +462,13 @@ class DispatcherVehicleSetupAPIView(AccountAPIView):
             admin_html = get_template("registration/dispatcher_registered_admin.html").render(
                 {"profile": profile, "user": request.user, "admin_url": admin_url}
             )
-            admin_msg = EmailMessage(
-                f"New dispatcher registered – {profile.full_name or request.user.email}",
+            send_email_message_task.delay(
+                f"New dispatcher registered - {profile.full_name or request.user.email}",
                 admin_html,
                 from_email,
                 admin_emails,
+                True,
             )
-            admin_msg.content_subtype = "html"
-            admin_msg.send(fail_silently=True)
 
         return Response(serializer.data)
 

@@ -33,7 +33,15 @@ class SubCategoryViewSet(ReadPublicWriteOwnerViewSet):
 
 
 class ProductsViewSet(ReadPublicWriteOwnerViewSet):
-    queryset = Products.objects.select_related("shop", "category", "subcategory").all()
+    queryset = Products.objects.select_related(
+        "shop",
+        "category",
+        "subcategory",
+        "label",
+        "status",
+        "delivery",
+        "delivery_time",
+    ).all()
     serializer_class = ProductsSerializer
 
     def get_permissions(self):
@@ -68,9 +76,11 @@ class ProductsViewSet(ReadPublicWriteOwnerViewSet):
                 "price": str(product.price),
                 "discount_price": str(product.discount_price) if product.discount_price else "",
                 "description": product.description,
-                "label": product.label,
-                "status": product.status,
-                "delivery": product.delivery,
+                "nutrition": product.nutrition,
+                "label": product.label.code if product.label else "",
+                "status": product.status.code if product.status else "",
+                "delivery": product.delivery.code if product.delivery else "",
+                "delivery_time": product.delivery_time.code if product.delivery_time else "",
                 "available": product.available,
                 "barcode": product.barcode,
                 "stock": product.stock,

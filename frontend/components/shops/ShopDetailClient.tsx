@@ -6,6 +6,7 @@ import {
   Bell,
   Calendar,
   Clock3,
+  Hash,
   Mail,
   MapPin,
   MessageSquare,
@@ -216,6 +217,7 @@ function ReviewsTab({ reviews }: { reviews: ShopReview[] }) {
 
 function AboutTab({ shop }: { shop: Shop }) {
   const rows: { icon: ReactNode; label: string; value: string | undefined }[] = [
+    { icon: <Hash size={16} />, label: 'Shop ID', value: shop.idNumber },
     {
       icon: <MapPin size={16} />,
       label: 'Address',
@@ -309,6 +311,13 @@ export function ShopDetailClient({
             </div>
 
             <div className="shd-name">{shop.name}</div>
+            {shop.idNumber ? (
+              <div className="shd-id-chip">
+                <Hash size={12} />
+                <span>Shop ID</span>
+                <strong>{shop.idNumber}</strong>
+              </div>
+            ) : null}
             {(shop.address || shop.city) && (
               <div className="shd-addr">
                 <MapPin size={13} style={{ display: 'inline', marginRight: 4 }} />
@@ -319,10 +328,13 @@ export function ShopDetailClient({
 
             <div className="shd-actions">
               {shop.isOpen != null && (
-                <span className={shop.isOpen ? 'shd-open-pill' : 'shd-closed-pill'}>
-                  <span className="shd-status-dot" />
-                  {shop.isOpen ? 'Open now' : 'Closed'}
-                </span>
+                <div className="shd-status-wrap">
+                  <span className={shop.isOpen ? 'shd-open-pill' : 'shd-closed-pill'}>
+                    <span className="shd-status-dot" />
+                    {shop.isOpen ? 'Open now' : 'Closed'}
+                  </span>
+                  {shop.openingHours ? <span className="shd-hours-inline">{shop.openingHours}</span> : null}
+                </div>
               )}
               {!isOwner ? (
                 isAuthenticated ? (

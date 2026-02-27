@@ -63,6 +63,10 @@ export const apiPaths = {
   cartRemoveSingleFromCart: '/cart/remove-single-item-from-cart/',
   cartUpdateQuantity: '/cart/update_quantity/',
   cartOrderSummary: '/cart/order-summary/',
+  checkoutPlaceOrder: '/api/checkout/place-order/',
+  checkoutTimeSlots: '/api/checkout/time-slots/',
+  checkoutSavedAddresses: '/api/user/saved-addresses/',
+  checkoutPromoValidate: '/api/promo/validate/',
   addCoupon: '/order/add-coupon/',
   wishlist: '/home/favourites/',
   wishlistFallback: '/wishlist/',
@@ -157,6 +161,29 @@ function slugify(value: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
+function resolveDisplayPrice(
+  baseRaw: unknown,
+  discountRaw: unknown,
+  oldRaw?: unknown
+): { price: number; oldPrice: number | null } {
+  const basePrice = toNumber(baseRaw);
+  const discountPrice = toNumber(discountRaw);
+  const explicitOldPrice = toNumber(oldRaw);
+
+  if (discountPrice > 0 && (basePrice <= 0 || discountPrice < basePrice)) {
+    return {
+      price: discountPrice,
+      oldPrice: basePrice > discountPrice ? basePrice : null
+    };
+  }
+
+  const price = basePrice > 0 ? basePrice : discountPrice;
+  if (explicitOldPrice > price) {
+    return { price, oldPrice: explicitOldPrice };
+  }
+  return { price, oldPrice: null };
+}
+
 function toShop(raw: unknown): Shop {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const id = String(record.id ?? record.shop_id ?? '');
@@ -165,8 +192,39 @@ function toShop(raw: unknown): Shop {
   const cats = pickArray(record, ['categories'])
     .map((c) => (typeof c === 'string' ? c : pickString(c as Record<string, unknown>, ['name']) ?? ''))
     .filter(Boolean) as string[];
+  const parseTimeToMinutes = (value?: string | null): number | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    const hours = Number.parseInt(match[1], 10);
+    const minutes = Number.parseInt(match[2], 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return null;
+    }
+    return hours * 60 + minutes;
+  };
+  const openMinutes = parseTimeToMinutes(pickString(record, ['open_time']));
+  const closeMinutes = parseTimeToMinutes(pickString(record, ['close_time']));
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const computedFromWindow =
+    openMinutes != null && closeMinutes != null
+      ? openMinutes <= closeMinutes
+        ? currentMinutes >= openMinutes && currentMinutes <= closeMinutes
+        : currentMinutes >= openMinutes || currentMinutes <= closeMinutes
+      : null;
+  const explicitOpen =
+    typeof record.is_shop_open === 'boolean'
+      ? record.is_shop_open
+      : typeof record.is_open === 'boolean'
+        ? (computedFromWindow == null ? record.is_open : (record.is_open && computedFromWindow))
+        : typeof record.isOpen === 'boolean'
+          ? (computedFromWindow == null ? record.isOpen : (record.isOpen && computedFromWindow))
+          : null;
   return {
     id,
+    idNumber: pickString(record, ['id_number', 'idNumber']),
     ownerUserId: record.owner_id != null
       ? String(record.owner_id)
       : record.owner != null && typeof record.owner !== 'object'
@@ -183,7 +241,7 @@ function toShop(raw: unknown): Shop {
     address: pickString(record, ['address', 'location']),
     city: pickString(record, ['city']),
     description: pickString(record, ['description', 'bio']),
-    isOpen: typeof record.is_open === 'boolean' ? record.is_open : typeof record.isOpen === 'boolean' ? record.isOpen : true,
+    isOpen: explicitOpen ?? computedFromWindow ?? false,
     distanceKm: toNumber(record.distance ?? record.distance_km) || null,
     rating: toNumber(record.rating) || null,
     latitude: record.latitude != null ? toNumber(record.latitude) : null,
@@ -400,8 +458,11 @@ export function toProduct(raw: unknown): Product {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const name = pickString(record, ['title', 'name', 'product_name']) ?? 'Fresh deal item';
   const productId = String(record.id ?? record.product_id ?? '');
-  const salePrice = toNumber(record.price);
-  const oldPrice = toNumber(record.discount_price ?? record.old_price ?? record.oldPrice);
+  const pricing = resolveDisplayPrice(
+    record.price ?? record.base_price ?? record.regular_price,
+    record.discount_price ?? record.sale_price ?? record.discounted_price,
+    record.old_price ?? record.oldPrice
+  );
   const categories = pickArray(record, ['categories'])
     .map((item) => {
       if (typeof item === 'string') return item;
@@ -417,7 +478,6 @@ export function toProduct(raw: unknown): Product {
     })
     .filter(Boolean) as string[];
   const description = pickString(record, ['description']) ?? '';
-  const oldPriceOrNull = oldPrice > salePrice ? oldPrice : null;
 
   return {
     id: productId,
@@ -429,9 +489,9 @@ export function toProduct(raw: unknown): Product {
     gallery,
     category: pickString(record, ['category']) ?? categories[0],
     categories,
-    price: salePrice,
-    oldPrice: oldPriceOrNull,
-    discountPercent: oldPriceOrNull ? Math.round(((oldPriceOrNull - salePrice) / oldPriceOrNull) * 100) : null,
+    price: pricing.price,
+    oldPrice: pricing.oldPrice,
+    discountPercent: pricing.oldPrice ? Math.round(((pricing.oldPrice - pricing.price) / pricing.oldPrice) * 100) : null,
     shopId: String(record.shop_id ?? record.shop ?? ''),
     shopName: pickString(record, ['shop_name', 'shop']),
     expiresOn: pickString(record, ['expiry_date', 'expires_on', 'best_before']) ?? null,
@@ -447,20 +507,47 @@ function toCartItem(raw: unknown): CartItem {
   const product = record.product && typeof record.product === 'object' ? (record.product as Record<string, unknown>) : {};
   const productId = String(record.product_id ?? product.id ?? record.id ?? '');
   const quantity = Math.max(1, Math.floor(toNumber(record.quantity)));
-  const unitPrice = toNumber(record.price ?? record.unit_price ?? product.price);
-  const lineTotalRaw = toNumber(record.total_price ?? record.total ?? unitPrice * quantity);
-  const lineTotal = lineTotalRaw > 0 ? lineTotalRaw : unitPrice * quantity;
-  const oldPrice = toNumber(product.discount_price ?? product.old_price ?? product.oldPrice);
+  const directUnitPrice = toNumber(record.price ?? record.unit_price ?? record.unitPrice ?? record.product_price);
+  const lineTotalRaw = toNumber(record.total_price ?? record.total ?? record.line_total ?? record.lineTotal);
+  const inferredUnitFromTotal = lineTotalRaw > 0 ? lineTotalRaw / quantity : 0;
+  const pricing = resolveDisplayPrice(
+    product.price ?? record.product_price ?? directUnitPrice,
+    product.discount_price ??
+      product.sale_price ??
+      product.discounted_price ??
+      record.discount_price ??
+      record.sale_price ??
+      record.discounted_price,
+    product.old_price ?? product.oldPrice ?? record.old_price ?? record.oldPrice
+  );
+
+  const priceCandidates = [directUnitPrice, pricing.price, inferredUnitFromTotal].filter((value) => value > 0);
+  const unitPrice = priceCandidates.length ? Math.min(...priceCandidates) : 0;
+  const lineTotal = lineTotalRaw > 0 ? Math.min(lineTotalRaw, unitPrice * quantity) : unitPrice * quantity;
+
+  const oldPriceCandidates = [
+    pricing.oldPrice,
+    toNumber(record.old_price ?? record.oldPrice),
+    toNumber(product.old_price ?? product.oldPrice),
+    toNumber(product.price),
+    directUnitPrice
+  ].filter((value): value is number => typeof value === 'number' && value > unitPrice);
+  const oldPrice = oldPriceCandidates.length ? Math.max(...oldPriceCandidates) : 0;
   const savings = oldPrice > unitPrice ? (oldPrice - unitPrice) * quantity : 0;
 
   return {
     id: String(record.id ?? productId),
     productId,
-    name: pickString(product, ['title', 'name']) ?? pickString(record, ['name']) ?? 'Cart item',
+    name:
+      pickString(product, ['title', 'name']) ??
+      pickString(record, ['title', 'name', 'product_name']) ??
+      'Cart item',
+    shopId: String(product.shop_id ?? record.shop_id ?? product.shop ?? record.shop ?? '').trim() || undefined,
     shopName: pickString(product, ['shop_name']) ?? pickString(record, ['shop_name']),
     image: pickString(product, ['image']) ?? pickString(record, ['image']) ?? null,
     quantity,
     unitPrice,
+    oldUnitPrice: oldPrice > unitPrice ? oldPrice : undefined,
     lineTotal,
     savings: savings > 0 ? savings : 0
   };
@@ -740,9 +827,140 @@ export async function getCartOrderSummary() {
   return toOrderSummary(payload);
 }
 
+export type CheckoutTimeSlot = {
+  id: string;
+  label: string;
+  available: number;
+};
+
+export type CheckoutSavedAddress = {
+  id: string;
+  label: string;
+  line1: string;
+  line2: string;
+  city: string;
+  county: string;
+  postcode: string;
+};
+
+export type CheckoutPlaceOrderPayload = {
+  deliveryMode: 'delivery' | 'pickup' | 'mixed';
+  shopModes: Record<string, 'delivery' | 'pickup'>;
+  deliveryDate?: string;
+  deliverySlot?: string;
+  address?: {
+    line1: string;
+    line2?: string;
+    city: string;
+    county?: string;
+    postcode: string;
+    notes?: string;
+  };
+  contact: {
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    phone: string;
+  };
+  payment: {
+    method: 'card' | 'transfer' | 'cash';
+    cardNumber?: string;
+    cardName?: string;
+    cardExpiry?: string;
+    cardCvv?: string;
+  };
+  promoCode?: string;
+};
+
+export type CheckoutPlaceOrderResponse = {
+  success: boolean;
+  orderIds: string[];
+  error?: string;
+};
+
+export type PromoValidationResult = {
+  valid: boolean;
+  discount: number;
+  type?: string;
+  value?: number;
+  message?: string;
+};
+
+function defaultCheckoutTimeSlots(date?: string): CheckoutTimeSlot[] {
+  const datePrefix = date ? `${date}-` : '';
+  return [
+    { id: `${datePrefix}09-12`, label: '09:00 - 12:00', available: 12 },
+    { id: `${datePrefix}12-15`, label: '12:00 - 15:00', available: 10 },
+    { id: `${datePrefix}15-18`, label: '15:00 - 18:00', available: 8 },
+    { id: `${datePrefix}18-21`, label: '18:00 - 21:00', available: 6 }
+  ];
+}
+
+export async function getCheckoutTimeSlots(date?: string): Promise<CheckoutTimeSlot[]> {
+  // Backend currently has no dedicated /checkout/time-slots endpoint.
+  // Return deterministic default slots so checkout remains functional without 404 noise.
+  return defaultCheckoutTimeSlots(date);
+}
+
+export async function getSavedAddresses(): Promise<CheckoutSavedAddress[]> {
+  const payload = await apiRequest<unknown>(apiPaths.checkoutSavedAddresses);
+  const normalized = normalizeListResponse<unknown>(payload);
+  return normalized.data.map((raw, index) => {
+    const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const line1 = pickString(record, ['line1', 'address_line1', 'address']) ?? '';
+    const line2 = pickString(record, ['line2', 'address_line2']) ?? '';
+    const city = pickString(record, ['city', 'town']) ?? '';
+    const county = pickString(record, ['county', 'state']) ?? '';
+    const postcode = pickString(record, ['postcode', 'postal_code', 'zip']) ?? '';
+    return {
+      id: String(record.id ?? index),
+      label: pickString(record, ['label', 'name']) ?? `Address ${index + 1}`,
+      line1,
+      line2,
+      city,
+      county,
+      postcode
+    };
+  });
+}
+
+export async function validateCheckoutPromo(code: string, subtotal: number): Promise<PromoValidationResult> {
+  const payload = await apiRequest<unknown>(apiPaths.checkoutPromoValidate, {
+    method: 'POST',
+    body: { code, subtotal }
+  });
+  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  return {
+    valid: Boolean(record.valid),
+    discount: toNumber(record.discount),
+    type: pickString(record, ['type']),
+    value: record.value != null ? toNumber(record.value) : undefined,
+    message: pickString(record, ['detail', 'message'])
+  };
+}
+
+export async function placeCheckoutOrder(payload: CheckoutPlaceOrderPayload): Promise<CheckoutPlaceOrderResponse> {
+  const raw = await apiRequest<unknown>(apiPaths.checkoutPlaceOrder, {
+    method: 'POST',
+    body: payload
+  });
+  const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const orderIdsRaw = Array.isArray(record.orderIds)
+    ? record.orderIds
+    : Array.isArray(record.order_ids)
+      ? record.order_ids
+      : [];
+  return {
+    success: typeof record.success === 'boolean' ? record.success : orderIdsRaw.length > 0,
+    orderIds: orderIdsRaw.map((id) => String(id)),
+    error: pickString(record, ['error', 'detail', 'message'])
+  };
+}
+
 export async function getWishlist() {
   const payload = await requestWithFallback<unknown>([apiPaths.wishlist, apiPaths.wishlistFallback]);
-  return normalizeListResponse<Product>(payload);
+  const normalized = normalizeListResponse<unknown>(payload);
+  return { ...normalized, data: normalized.data.map(toProduct) };
 }
 
 export async function addWishlist(productId: string) {
@@ -919,13 +1137,28 @@ function unwrapBudgetPayload(raw: unknown, keys: string[] = ['budget', 'data', '
 
 function toBudgetItem(raw: unknown): BudgetSummary['items'][number] {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const productId = record.product != null ? String(record.product) : '';
+  const productRecord = record.product && typeof record.product === 'object' ? (record.product as Record<string, unknown>) : null;
+  const productId = String(
+    record.product_id ??
+      record.productId ??
+      (record.product != null && typeof record.product !== 'object' ? record.product : undefined) ??
+      productRecord?.id ??
+      productRecord?.pk ??
+      ''
+  );
   const explicitName = pickString(record, ['name', 'item_name', 'product_name', 'title']);
+  const directPrice = toNumber(record.price ?? record.unit_price ?? record.amount ?? record.product_price);
+  const productPricing = resolveDisplayPrice(
+    productRecord?.price ?? productRecord?.base_price ?? productRecord?.regular_price,
+    productRecord?.discount_price ?? productRecord?.sale_price ?? productRecord?.discounted_price,
+    productRecord?.old_price ?? productRecord?.oldPrice
+  );
+  const unitPrice = directPrice > 0 ? directPrice : productPricing.price;
   return {
     id: String(record.id ?? record.item_id ?? record.shopping_list_item_id ?? ''),
     productId: productId || undefined,
     name: explicitName || (productId ? `Product #${productId}` : 'Budget item'),
-    price: toNumber(record.price ?? record.unit_price ?? record.amount),
+    price: unitPrice,
     quantity: Math.max(1, Math.floor(toNumber(record.quantity ?? record.qty ?? 1))),
     category: pickString(record, ['category', 'category_name'])
   };
@@ -1108,7 +1341,7 @@ export async function deleteBudget(id: string): Promise<void> {
   await apiRequest<void>(apiPaths.budgetById(id), { method: 'DELETE' });
 }
 
-export async function addBudgetItem(payload: { name: string; quantity: number; price: number }, budgetId?: string) {
+export async function addBudgetItem(payload: { name: string; quantity: number; price: number; productId?: string }, budgetId?: string) {
   if (!budgetId) {
     throw new Error('Budget ID is required to add items.');
   }
@@ -1116,7 +1349,8 @@ export async function addBudgetItem(payload: { name: string; quantity: number; p
     method: 'POST',
     body: {
       name: payload.name,
-      quantity: payload.quantity
+      quantity: payload.quantity,
+      ...(payload.productId ? { product: payload.productId, product_id: payload.productId } : {})
     }
   });
   return coerceBudgetFromAction(raw, budgetId);

@@ -1,4 +1,3 @@
-from django.core.mail import EmailMessage
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
@@ -10,6 +9,7 @@ from account.models import Profile
 from foodCreate.models import Products
 from owner.models import Affiliate, Information
 from owner.serializers import AffiliateSerializer, InformationSerializer
+from account.tasks import send_email_message_task
 
 from .permissions import IsOwnerOrReadOnly
 from drf_spectacular.utils import extend_schema
@@ -49,11 +49,7 @@ class InformationViewSet(viewsets.ModelViewSet):
             info.name or "Anonymous",
             info.message,
         )
-        try:
-            email = EmailMessage(subject, message, from_email=info.email, to=['ezechdr16@gmail.com'])
-            email.send(fail_silently=True)
-        except Exception:
-            pass
+        send_email_message_task.delay(subject, message, info.email, ['ezechdr16@gmail.com'], False)
         return Response(self.get_serializer(info).data, status=status.HTTP_201_CREATED)
 
 
