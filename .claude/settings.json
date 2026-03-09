@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py makemigrations foodCreate --name=\"add_ingredients_to_products\")",
+      "Bash(docker compose exec web python manage.py makemigrations foodCreate --name=\"add_ingredients_to_products\")",
+      "Bash(docker compose exec web python manage.py migrate foodCreate)",
+      "Bash(docker compose exec web python manage.py makemigrations)",
+      "Bash(docker compose exec web python manage.py migrate)"
+    ]
+  }
+}

@@ -98,6 +98,7 @@ class Products(models.Model):
     stock = models.PositiveIntegerField(default=0)
     expires_on = models.DateField(null=True, blank=True, db_index=True)
     description = models.TextField(blank=True)
+    ingredients = models.TextField(blank=True)
     nutrition = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     created_date = models.DateField(auto_now_add=True, null=True, blank=True)

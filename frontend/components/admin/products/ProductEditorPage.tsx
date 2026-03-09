@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, ChevronRight, FileText, ImageIcon, Info, Layers, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -48,6 +48,7 @@ type ProductForm = {
   images: File[];
   imagePreviews: string[];
   description: string;
+  ingredients: string;
   nutrition: string;
 };
 
@@ -94,6 +95,7 @@ const INITIAL_FORM: ProductForm = {
   images: [],
   imagePreviews: [],
   description: '',
+  ingredients: '',
   nutrition: ''
 };
 
@@ -305,6 +307,7 @@ function mapProductToForm(payload: unknown): ProductForm {
     images: [],
     imagePreviews,
     description: pickString(record, ['description']),
+    ingredients: pickString(record, ['ingredients', 'ingredients_text']),
     nutrition: pickString(record, ['nutrition', 'nutrition_info'])
   };
 }
@@ -325,6 +328,464 @@ async function tryFetchJson(paths: string[]): Promise<unknown> {
     }
   }
   throw lastError ?? new Error('Request failed');
+}
+
+// ── Scan types ──────────────────────────────────────────────────────────────
+type ScanMode = 'manual' | 'barcode' | 'ai';
+
+type ScanResult = {
+  title?: string;
+  brand?: string;
+  category?: string;
+  weight?: string;
+  description?: string;
+  ingredients?: string;
+  nutrition?: string;
+  barcode?: string;
+  confidence?: number;
+  tags?: string[];
+};
+
+// ── Open Food Facts barcode lookup ──────────────────────────────────────────
+async function lookupBarcode(barcode: string): Promise<ScanResult> {
+  const res = await fetch(
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`,
+    { cache: 'no-store' }
+  );
+  if (!res.ok) throw new Error('Barcode lookup failed');
+  const json = (await res.json()) as { status: number; product?: Record<string, unknown> };
+  if (!json.product || json.status === 0) throw new Error('Product not found');
+  const p = json.product;
+  const getString = (keys: string[]) => {
+    for (const k of keys) {
+      if (typeof p[k] === 'string' && (p[k] as string).trim()) return (p[k] as string).trim();
+    }
+    return '';
+  };
+  const nutriments = p['nutriments'] as Record<string, unknown> | undefined;
+  const nutritionLines: string[] = [];
+  if (nutriments) {
+    const fmt = (label: string, key: string) => {
+      const v = nutriments[key];
+      if (v !== undefined && v !== '') nutritionLines.push(`${label}: ${v}`);
+    };
+    fmt('Calories (kcal)', 'energy-kcal_100g');
+    fmt('Fat (g)', 'fat_100g');
+    fmt('Saturated fat (g)', 'saturated-fat_100g');
+    fmt('Carbohydrates (g)', 'carbohydrates_100g');
+    fmt('Sugars (g)', 'sugars_100g');
+    fmt('Fibre (g)', 'fiber_100g');
+    fmt('Protein (g)', 'proteins_100g');
+    fmt('Salt (g)', 'salt_100g');
+  }
+  const rawCategory = getString(['categories_tags', 'categories']);
+  const category = rawCategory.split(',')[0]?.replace(/^en:/, '').replace(/-/g, ' ').trim() ?? '';
+  return {
+    title: getString(['product_name', 'product_name_en']),
+    brand: getString(['brands']),
+    category,
+    weight: getString(['quantity', 'net_weight_value']),
+    description: getString(['generic_name', 'product_name']),
+    ingredients: getString(['ingredients_text_en', 'ingredients_text']),
+    nutrition: nutritionLines.join('\n'),
+    barcode,
+    confidence: 95,
+    tags: [],
+  };
+}
+
+// ── BarcodeScanner ───────────────────────────────────────────────────────────
+function BarcodeScanner({ onResult }: { onResult: (result: ScanResult) => void }) {
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  const stopCamera = useCallback(() => {
+    if (intervalRef.current) window.clearInterval(intervalRef.current);
+    intervalRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setScanning(false);
+  }, []);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  const startCamera = async () => {
+    setScanError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setScanning(true);
+      if (!('BarcodeDetector' in window)) {
+        setScanError('Live barcode scanning not supported in this browser. Enter barcode manually instead.');
+        stopCamera();
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const detector = new (window as any).BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] });
+      intervalRef.current = window.setInterval(async () => {
+        if (!videoRef.current) return;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const barcodes = await detector.detect(videoRef.current) as any[];
+          if (barcodes.length > 0) {
+            const code = barcodes[0].rawValue as string;
+            stopCamera();
+            setInput(code);
+            setLoading(true);
+            try {
+              const result = await lookupBarcode(code);
+              onResult(result);
+            } catch {
+              setScanError('Barcode found but product not in database. Try manual lookup.');
+            } finally {
+              setLoading(false);
+            }
+          }
+        } catch { /* keep scanning */ }
+      }, 600);
+    } catch {
+      setScanError('Camera access denied or unavailable.');
+      setScanning(false);
+    }
+  };
+
+  const handleLookup = async () => {
+    const barcode = input.trim();
+    if (!barcode) return;
+    setLoading(true);
+    setScanError('');
+    try {
+      const result = await lookupBarcode(barcode);
+      onResult(result);
+    } catch {
+      setScanError('Product not found for this barcode. Try a different barcode or switch to manual entry.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: '0.82rem', color: '#6b7b6d', marginBottom: '12px' }}>
+        Scan or enter a barcode to auto-fill product details from Open Food Facts.
+      </p>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void handleLookup(); }}
+          placeholder="Enter or paste barcode number..."
+          className={styles.input}
+          style={{ flex: 1, minWidth: '180px' }}
+        />
+        <button type="button" className={styles.outlineButton} onClick={() => void handleLookup()} disabled={loading || !input.trim()}>
+          {loading ? 'Looking up...' : 'Lookup'}
+        </button>
+        {!scanning ? (
+          <button type="button" className={styles.outlineButton} onClick={() => void startCamera()}>
+            Scan Camera
+          </button>
+        ) : (
+          <button type="button" className={styles.cancelButton} onClick={stopCamera}>
+            Stop Camera
+          </button>
+        )}
+      </div>
+      {scanning && (
+        <div style={{ marginTop: '12px', maxWidth: '400px', borderRadius: '12px', overflow: 'hidden', border: '2px solid #2d7a3a' }}>
+          <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
+          <p style={{ fontSize: '0.78rem', color: '#6b7b6d', margin: '6px 0 0', textAlign: 'center' }}>
+            Hold barcode up to the camera...
+          </p>
+        </div>
+      )}
+      {scanError ? <p style={{ color: '#dc2626', fontSize: '0.82rem', marginTop: '8px' }}>{scanError}</p> : null}
+    </div>
+  );
+}
+
+// ── AICameraScanner ─────────────────────────────────────────────────────────
+function AICameraScanner({ onResult }: { onResult: (result: ScanResult) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [capturing, setCapturing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCapturing(false);
+  }, []);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  const sendToAI = async (base64: string, mimeType: string) => {
+    setLoading(true);
+    setScanError('');
+    try {
+      const res = await fetch('/api/ai-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
+      });
+      if (!res.ok) throw new Error('AI scan failed');
+      const data = (await res.json()) as ScanResult;
+      onResult(data);
+    } catch {
+      setScanError('AI scan failed. Please try again or use manual entry.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startCapture = async () => {
+    setScanError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCapturing(true);
+    } catch {
+      setScanError('Camera access denied or unavailable.');
+    }
+  };
+
+  const captureFrame = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+    const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    stopCamera();
+    await sendToAI(base64, 'image/jpeg');
+  };
+
+  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      const base64 = dataUrl.split(',')[1];
+      void sendToAI(base64, file.type || 'image/jpeg');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: '0.82rem', color: '#6b7b6d', marginBottom: '12px' }}>
+        Take a photo or upload a product image — AI will identify it and fill in the details.
+      </p>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {!capturing ? (
+          <button type="button" className={styles.outlineButton} onClick={() => void startCapture()} disabled={loading}>
+            Open Camera
+          </button>
+        ) : (
+          <>
+            <button type="button" className={styles.saveButton} onClick={() => void captureFrame()} disabled={loading}>
+              {loading ? 'Scanning...' : 'Capture Photo'}
+            </button>
+            <button type="button" className={styles.cancelButton} onClick={stopCamera}>
+              Cancel
+            </button>
+          </>
+        )}
+        <button type="button" className={styles.outlineButton} onClick={() => fileRef.current?.click()} disabled={loading}>
+          {loading ? 'Scanning...' : 'Upload Photo'}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" className={styles.hiddenInput} onChange={handleFile} />
+      </div>
+      {capturing && (
+        <div style={{ marginTop: '12px', maxWidth: '400px', borderRadius: '12px', overflow: 'hidden', border: '2px solid #2d7a3a' }}>
+          <video ref={videoRef} style={{ width: '100%', display: 'block' }} muted playsInline />
+        </div>
+      )}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      {scanError ? <p style={{ color: '#dc2626', fontSize: '0.82rem', marginTop: '8px' }}>{scanError}</p> : null}
+    </div>
+  );
+}
+
+// ── AutofillPreview ──────────────────────────────────────────────────────────
+function AutofillPreview({ result, onApply, onDismiss }: {
+  result: ScanResult;
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div style={{ background: '#1a3d1e', color: 'white', borderRadius: '12px', padding: '20px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '2px' }}>
+            {result.title || 'Product Identified'}
+          </div>
+          <div style={{ fontSize: '0.78rem', opacity: 0.7 }}>
+            {[
+              result.brand && `Brand: ${result.brand}`,
+              result.category && `Category: ${result.category}`,
+              result.confidence !== undefined && `Confidence: ${result.confidence}%`,
+            ].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', lineHeight: 1 }}
+        >
+          ✕
+        </button>
+      </div>
+      {result.tags && result.tags.length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+          {result.tags.map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '20px', padding: '2px 10px', fontSize: '0.75rem' }}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={onApply}
+          style={{ background: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 20px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
+        >
+          Apply to form
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', fontSize: '0.85rem' }}
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PricePredictor ───────────────────────────────────────────────────────────
+function PricePredictor({ initialPrice = '', initialExpiryDate = '', onApplyPrice }: {
+  initialPrice?: string;
+  initialExpiryDate?: string;
+  onApplyPrice: (price: string) => void;
+}) {
+  const [originalPrice, setOriginalPrice] = useState(initialPrice);
+  const [expiryDate, setExpiryDate] = useState(initialExpiryDate);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => { if (initialPrice) setOriginalPrice(initialPrice); }, [initialPrice]);
+  useEffect(() => { if (initialExpiryDate) setExpiryDate(initialExpiryDate); }, [initialExpiryDate]);
+
+  const daysLeft = useMemo(() => {
+    if (!expiryDate) return null;
+    return Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000);
+  }, [expiryDate]);
+
+  const tiers = useMemo(() => {
+    const price = parseFloat(originalPrice);
+    if (!price || price <= 0) return null;
+    let con = 0.1, rec = 0.2, agg = 0.35;
+    if (daysLeft !== null) {
+      if (daysLeft <= 1)      { con = 0.40; rec = 0.55; agg = 0.70; }
+      else if (daysLeft <= 3) { con = 0.25; rec = 0.35; agg = 0.50; }
+      else if (daysLeft <= 7) { con = 0.15; rec = 0.25; agg = 0.40; }
+    }
+    const fmt = (d: number) => (price * (1 - d)).toFixed(2);
+    return {
+      conservative: { price: fmt(con), pct: Math.round(con * 100) },
+      recommended:  { price: fmt(rec), pct: Math.round(rec * 100) },
+      aggressive:   { price: fmt(agg), pct: Math.round(agg * 100) },
+    };
+  }, [originalPrice, daysLeft]);
+
+  return (
+    <div style={{ background: '#1e1040', color: 'white', borderRadius: '12px', padding: '20px', marginTop: '16px' }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        onClick={() => setExpanded((p) => !p)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded((p) => !p); }}
+        role="button"
+        tabIndex={0}
+      >
+        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>AI Price Predictor</div>
+        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>{expanded ? '▲ Hide' : '▼ Show suggestions'}</span>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: '16px' }}>
+          <p style={{ fontSize: '0.78rem', opacity: 0.7, marginBottom: '12px' }}>
+            Get AI-suggested discount prices based on expiry date to help reduce food waste.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Original Price (£)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={originalPrice}
+                onChange={(e) => setOriginalPrice(e.target.value)}
+                placeholder="0.00"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '0.9rem', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Expiry Date</label>
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '0.9rem', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          {tiers ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+              {([
+                { key: 'conservative', label: 'Conservative', color: '#4ade80' },
+                { key: 'recommended',  label: 'Recommended',  color: '#facc15' },
+                { key: 'aggressive',   label: 'Aggressive',   color: '#f87171' },
+              ] as const).map(({ key, label, color }) => (
+                <div key={key} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color }}>£{tiers[key].price}</div>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.65, marginTop: '2px' }}>{tiers[key].pct}% off · {label}</div>
+                  <button
+                    type="button"
+                    onClick={() => onApplyPrice(tiers[key].price)}
+                    style={{ marginTop: '8px', background: 'rgba(255,255,255,0.18)', color: 'white', border: 'none', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', fontSize: '0.75rem' }}
+                  >
+                    Apply
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: '0.82rem', opacity: 0.6 }}>Enter original price above to see discount suggestions.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SectionCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
@@ -550,8 +1011,33 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
   const [deletingExistingImageId, setDeletingExistingImageId] = useState<string | null>(null);
   const [uploadingGalleryImages, setUploadingGalleryImages] = useState(false);
   const [taxonomyError, setTaxonomyError] = useState('');
+  const [scanMode, setScanMode] = useState<ScanMode>('manual');
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   const update = (patch: Partial<ProductForm>) => setForm((current) => ({ ...current, ...patch }));
+
+  const applyAutofill = (result: ScanResult) => {
+    const patch: Partial<ProductForm> = {};
+    if (result.title)       patch.title       = result.title;
+    if (result.brand)       patch.brand       = result.brand;
+    if (result.weight)      patch.weight      = result.weight;
+    if (result.description) patch.description = result.description;
+    if (result.ingredients) patch.ingredients = result.ingredients;
+    if (result.nutrition)   patch.nutrition   = result.nutrition;
+    if (result.barcode)     patch.barcode     = result.barcode;
+    if (result.category) {
+      const matchedCat = categories.find(
+        (c) =>
+          c.name.toLowerCase().includes(result.category!.toLowerCase()) ||
+          result.category!.toLowerCase().includes(c.name.toLowerCase())
+      );
+      if (matchedCat) patch.category = matchedCat.id;
+    }
+    update(patch);
+    setScanResult(null);
+    setScanMode('manual');
+    toast.success('Product details applied to form.');
+  };
 
   const currentSubcategories = useMemo(
     () =>
@@ -1022,6 +1508,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       fd.append('stock', form.quantity);
       fd.append('available', String(form.available));
       fd.append('description', form.description);
+      fd.append('ingredients', form.ingredients);
       fd.append('nutrition', form.nutrition);
 
       const backendPath = isEditMode && productId ? `${apiPaths.adminProducts}${productId}/` : apiPaths.createProduct;
@@ -1131,6 +1618,68 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       <div className={styles.content}>
         {error ? <div className={styles.errorBanner}>{error}</div> : null}
         {bootLoading ? <div className={styles.loadingCard}>Loading product form...</div> : null}
+
+        {/* Smart Scan Panel */}
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionIcon} aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+            </div>
+            <h2 className={styles.sectionTitle}>Smart Fill</h2>
+          </div>
+          <div className={styles.sectionBody}>
+            {/* Mode tabs */}
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              {([
+                { mode: 'manual',  label: 'Manual Entry' },
+                { mode: 'barcode', label: 'Barcode Scan' },
+                { mode: 'ai',      label: 'AI Camera Scan' },
+              ] as const).map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => { setScanMode(mode); setScanResult(null); }}
+                  style={{
+                    padding: '7px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid',
+                    borderColor: scanMode === mode ? '#2d7a3a' : '#dde8de',
+                    background: scanMode === mode ? '#2d7a3a' : 'transparent',
+                    color: scanMode === mode ? 'white' : '#6b7b6d',
+                    cursor: 'pointer',
+                    fontSize: '0.84rem',
+                    fontWeight: scanMode === mode ? 600 : 400,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Autofill preview */}
+            {scanResult ? (
+              <AutofillPreview
+                result={scanResult}
+                onApply={() => applyAutofill(scanResult)}
+                onDismiss={() => setScanResult(null)}
+              />
+            ) : null}
+
+            {/* Scanner panels */}
+            {scanMode === 'barcode' && !scanResult ? (
+              <BarcodeScanner onResult={(result) => setScanResult(result)} />
+            ) : null}
+            {scanMode === 'ai' && !scanResult ? (
+              <AICameraScanner onResult={(result) => setScanResult(result)} />
+            ) : null}
+            {scanMode === 'manual' ? (
+              <p style={{ fontSize: '0.82rem', color: '#6b7b6d' }}>
+                Fill in the form fields below manually, or switch to Barcode Scan / AI Camera Scan to auto-fill from a product image or barcode.
+              </p>
+            ) : null}
+          </div>
+        </section>
 
         <SectionCard icon={<Layers size={16} />} title="Use a Template">
           <div className={styles.templateRow}>
@@ -1382,6 +1931,12 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
             <span>Unit:</span>
             <span className={styles.currencyPill}>kg / each</span>
           </div>
+
+          <PricePredictor
+            initialPrice={form.price}
+            initialExpiryDate={form.expiryDate}
+            onApplyPrice={(price) => update({ discountPrice: price })}
+          />
         </SectionCard>
 
         <SectionCard icon={<CalendarDays size={16} />} title="Expiry & Status">
@@ -1530,6 +2085,20 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
               onChange={(e) => update({ description: e.target.value })}
               className={styles.textarea}
               placeholder="Describe the product - ingredients, weight, flavour, storage info..."
+            />
+          </div>
+          <div className={styles.fieldNoMargin}>
+            <label htmlFor="ingredients" className={styles.label}>
+              Ingredients <span className={styles.hint}>(optional)</span>
+            </label>
+            <textarea
+              id="ingredients"
+              name="ingredients"
+              rows={4}
+              value={form.ingredients}
+              onChange={(e) => update({ ingredients: e.target.value })}
+              className={styles.textarea}
+              placeholder="List the ingredients, e.g. Wheat flour, water, salt, yeast..."
             />
           </div>
           <div className={styles.fieldNoMargin}>
