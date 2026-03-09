@@ -11,6 +11,7 @@ from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from django.contrib import messages
 from django.http import HttpResponseRedirect, Http404,HttpResponse, JsonResponse
+from django.core.cache import cache
 
 from account.models import (
     Profile,
@@ -301,6 +302,11 @@ def nearby_shops(request):
     if radius <= 0:
         return JsonResponse({"error": "Radius must be greater than 0."}, status=400)
 
+    cache_key = f"nearby:shops:web:{round(latitude, 4)}:{round(longitude, 4)}:{round(radius, 2)}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse({"shops": cached})
+
     user_location = Point(longitude, latitude, srid=4326)
     nearby = (
         Shop.objects.filter(location__isnull=False)
@@ -329,6 +335,7 @@ def nearby_shops(request):
         }
         for shop in nearby
     ]
+    cache.set(cache_key, shops, 60 * 5)
     return JsonResponse({"shops": shops})
 
 def home_list(request, category_slug=None):

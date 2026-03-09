@@ -363,7 +363,7 @@ export function ProductDetailView({
 
   const gallery = useMemo(() => {
     const imgs = [product.image, ...(product.gallery || [])].filter(Boolean) as string[];
-    return Array.from(new Set(imgs));
+    return Array.from(new Set(imgs)).slice(0, 3);
   }, [product.image, product.gallery]);
 
   const discount = product.discountPercent ?? (product.oldPrice && product.oldPrice > product.price
@@ -373,6 +373,7 @@ export function ProductDetailView({
   const expInfo = getExpiryInfo(product.expiresOn);
   const categories = product.categories?.length ? product.categories : product.category ? [product.category] : [];
   const filledStars = Math.round(Math.max(0, Math.min(5, product.rating ?? 0)));
+  const shareUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/products/${product.id}`;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -556,10 +557,10 @@ export function ProductDetailView({
             <span className="pd-price-new">{formatPrice(product.price)}</span>
             {product.oldPrice ? <span className="pd-price-old">{formatPrice(product.oldPrice)}</span> : null}
             {discount ? <span className="pd-save-badge">Save {discount}%</span> : null}
+            {discount && product.oldPrice ? (
+              <span className="pd-save-line">You save {formatPrice(product.oldPrice - product.price)}</span>
+            ) : null}
           </div>
-          {discount && product.oldPrice ? (
-            <div className="pd-save-line">You save {formatPrice(product.oldPrice - product.price)}</div>
-          ) : null}
 
           <p className="pd-short-desc">
             {product.shortDescription || product.description || 'Fresh deal from a verified local shop.'}
@@ -576,7 +577,7 @@ export function ProductDetailView({
           </div>
 
           {chat ? (
-            <div style={{ marginTop: 12 }}>
+            <div className="pd-chat-panel">
               {isAuthenticated ? (
                 <StartChatDialog
                   shopId={chat.shopId}
@@ -592,7 +593,7 @@ export function ProductDetailView({
                   Login to chat
                 </Link>
               )}
-              <div style={{ marginTop: 8 }}>
+              <div className="pd-chat-link-row">
                 <Link
                   href={`/messages?shop=${encodeURIComponent(chat.shopId)}&product=${encodeURIComponent(product.id)}`}
                   className="pd-review-lnk"
@@ -655,7 +656,7 @@ export function ProductDetailView({
                   <IconCopy />
                 </button>
                 <a
-                  href={`https://wa.me/?text=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                  href={`https://wa.me/?text=${encodeURIComponent(shareUrl)}`}
                   className="pd-share-btn whatsapp"
                   target="_blank"
                   rel="noopener noreferrer"

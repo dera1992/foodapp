@@ -6,7 +6,12 @@ import { getSession } from '@/lib/auth/session';
 
 export default async function ProductPage({ params }: { params: Promise<{ productId: string }> }) {
   const { productId } = await params;
-  const product = await getProduct(productId).catch(() => null);
+  let product = await getProduct(productId).catch(() => null);
+  if (!product) {
+    product = await getProducts()
+      .then((response) => response.data.find((item) => String(item.id) === String(productId)) ?? null)
+      .catch(() => null);
+  }
   if (!product) return notFound();
 
   const related = await getProducts()

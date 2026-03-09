@@ -42,11 +42,14 @@ export type Product = {
   id: string;
   name: string;
   slug?: string;
+  createdAt?: string | null;
   description?: string;
   shortDescription?: string;
   image?: string | null;
   gallery?: string[];
   category?: string;
+  stock?: number | null;
+  recentPurchaseCount?: number | null;
   price: number;
   oldPrice?: number | null;
   discountPercent?: number | null;

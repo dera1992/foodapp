@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.cache import cache
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
@@ -13,6 +14,15 @@ from foodCreate.serializers import ProductsSerializer, ReviewRatingSerializer
 from home.models import WishlistItem, WishlistNotification
 from home.serializers import WishlistItemSerializer, WishlistNotificationSerializer
 from order.models import Order, OrderItem
+from home.analytics import (
+    ANALYTICS_CACHE_TTL_SECONDS,
+    build_customer_analytics_payload,
+    build_dispatcher_analytics_payload,
+    build_shop_analytics_payload,
+    customer_analytics_cache_key,
+    dispatcher_analytics_cache_key,
+    shop_analytics_cache_key,
+)
 
 from .permissions import IsOwnerOrReadOnly
 from drf_spectacular.utils import extend_schema
@@ -25,6 +35,8 @@ else:
     Distance = None
     Point = None
     D = None
+
+NEARBY_CACHE_TTL_SECONDS = 60 * 5
 
 
 class APIPayloadSerializer(serializers.Serializer):
@@ -76,48 +88,35 @@ class CustomerAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
-        completed_orders = Order.objects.filter(user=request.user).filter(Q(is_ordered=True) | Q(paid=True) | Q(verified=True))
-        order_items = OrderItem.objects.filter(order__in=completed_orders).select_related("item", "item__category", "item__shop")
-        total_spend = sum(item.get_final_price() for item in order_items)
-        total_orders = completed_orders.count()
-        total_items = order_items.aggregate(total=Sum("quantity"))["total"] or 0
-        return Response(
-            {
-                "total_spend": total_spend,
-                "total_orders": total_orders,
-                "total_items": total_items,
-                "wishlist_count": WishlistItem.objects.filter(user=request.user).count(),
-                "unread_notifications": WishlistNotification.objects.filter(user=request.user, is_read=False).count(),
-            }
-        )
+        key = customer_analytics_cache_key(request.user.id)
+        payload = cache.get(key)
+        if payload is None:
+            payload = build_customer_analytics_payload(request.user)
+            cache.set(key, payload, ANALYTICS_CACHE_TTL_SECONDS)
+        return Response(payload)
 
 
 class DispatcherAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
-        delivery_ready = Order.objects.filter(Q(paid=True) | Q(verified=True), being_delivered=False, received=False).count()
-        active_deliveries = Order.objects.filter(being_delivered=True, received=False).count()
-        completed_deliveries = Order.objects.filter(received=True).count()
-        return Response(
-            {
-                "delivery_ready": delivery_ready,
-                "active_deliveries": active_deliveries,
-                "completed_deliveries": completed_deliveries,
-            }
-        )
+        key = dispatcher_analytics_cache_key()
+        payload = cache.get(key)
+        if payload is None:
+            payload = build_dispatcher_analytics_payload()
+            cache.set(key, payload, ANALYTICS_CACHE_TTL_SECONDS)
+        return Response(payload)
 
 
 class ShopAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
-        shops = Shop.objects.filter(owner=request.user)
-        payload = []
-        for shop in shops:
-            total_products = Products.objects.filter(shop=shop).count()
-            followers = shop.followers.count()
-            payload.append({"shop": shop.name, "products": total_products, "followers": followers})
+        key = shop_analytics_cache_key(request.user.id)
+        payload = cache.get(key)
+        if payload is None:
+            payload = build_shop_analytics_payload(request.user)
+            cache.set(key, payload, ANALYTICS_CACHE_TTL_SECONDS)
         return Response(payload)
 
 
@@ -135,7 +134,7 @@ class ShopDetailAPIView(PublicHomeAPIView):
     def get(self, request, shop_id):
         shop = get_object_or_404(Shop, id=shop_id)
         products = Products.objects.filter(shop=shop, is_active=True)
-        return Response({"shop": ShopSerializer(shop).data, "products": ProductsSerializer(products, many=True).data})
+        return Response({"shop": ShopSerializer(shop).data, "products": ProductsSerializer(products, many=True, context={"request": request}).data})
 
 
 class FavouriteAPIView(AuthenticatedHomeAPIView):
@@ -158,7 +157,7 @@ class FavouritesListAPIView(AuthenticatedHomeAPIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         products = Products.objects.filter(favourite=request.user, is_active=True)
-        return Response(ProductsSerializer(products, many=True).data)
+        return Response(ProductsSerializer(products, many=True, context={"request": request}).data)
 
 
 class SubmitReviewAPIView(AuthenticatedHomeAPIView):
@@ -207,6 +206,10 @@ class NearbyShopsAPIView(PublicHomeAPIView):
             return Response({"detail": "lat and lng query params are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         radius_km = float(request.query_params.get("radius_km", 10))
+        cache_key = f"nearby:shops:{round(lat, 4)}:{round(lng, 4)}:{round(radius_km, 2)}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
         user_location = Point(lng, lat, srid=4326)
         shops = (
             Shop.objects.filter(location__isnull=False)
@@ -214,7 +217,9 @@ class NearbyShopsAPIView(PublicHomeAPIView):
             .filter(location__distance_lte=(user_location, D(km=radius_km)))
             .order_by("distance")
         )
-        return Response(ShopSerializer(shops, many=True).data)
+        payload = ShopSerializer(shops, many=True).data
+        cache.set(cache_key, payload, NEARBY_CACHE_TTL_SECONDS)
+        return Response(payload)
 
 
 class ToggleShopSubscriptionAPIView(AuthenticatedHomeAPIView):
@@ -258,7 +263,7 @@ class AdsListAPIView(APIView):
         ads = Products.objects.filter(available=True, is_active=True).order_by("-created_at")
         if category_slug:
             ads = ads.filter(category__slug=category_slug)
-        return Response(ProductsSerializer(ads, many=True).data)
+        return Response(ProductsSerializer(ads, many=True, context={"request": request}).data)
 
 
 class AllAdsListAPIView(APIView):
@@ -268,7 +273,7 @@ class AllAdsListAPIView(APIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         ads = Products.objects.filter(is_active=True).order_by("-created_at")
-        return Response(ProductsSerializer(ads, many=True).data)
+        return Response(ProductsSerializer(ads, many=True, context={"request": request}).data)
 
 
 class CustomerListAPIView(APIView):
@@ -278,7 +283,7 @@ class CustomerListAPIView(APIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
         ads = Products.objects.filter(available=True, is_active=True).order_by("-created_at")
-        return Response(ProductsSerializer(ads, many=True).data)
+        return Response(ProductsSerializer(ads, many=True, context={"request": request}).data)
 
 
 class AdDetailAPIView(APIView):
@@ -288,7 +293,7 @@ class AdDetailAPIView(APIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, id, slug):
         ad = get_object_or_404(Products, id=id, slug=slug, is_active=True)
-        return Response(ProductsSerializer(ad).data)
+        return Response(ProductsSerializer(ad, context={"request": request}).data)
 
 
 class AdPreviewAPIView(APIView):
@@ -298,8 +303,12 @@ class AdPreviewAPIView(APIView):
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request, id, slug):
         ad = get_object_or_404(Products, id=id, slug=slug)
-        images = list(ad.images.values_list("product_image", flat=True)[:3])
-        return Response({"ad": ProductsSerializer(ad).data, "images": images})
+        images = [
+            request.build_absolute_uri(image.product_image.url)
+            for image in ad.images.all()[:3]
+            if image.product_image
+        ]
+        return Response({"ad": ProductsSerializer(ad, context={"request": request}).data, "images": images})
 
 
 class ToggleFavouriteAdAPIView(APIView):

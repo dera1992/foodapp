@@ -54,7 +54,7 @@ export function Navbar({ session }: { session?: Session }) {
   const isAuthenticated = Boolean(session?.isAuthenticated);
 
   const displayName = session?.role ? formatRole(session.role) : 'Account';
-  const displayEmail = session?.userId ? `user-${session.userId}@bunchfood.com` : '';
+  const displayEmail = session?.email?.trim() ?? '';
   const initials = displayName.charAt(0).toUpperCase();
 
   useEffect(() => {

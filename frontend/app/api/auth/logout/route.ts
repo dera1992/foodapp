@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const AUTH_COOKIES = ['access_token', 'refresh_token', 'role', 'user_id', 'sessionid'];
+const AUTH_COOKIES = ['access_token', 'refresh_token', 'role', 'user_id', 'user_email', 'sessionid'];
 
 /**
  * POST /api/auth/logout

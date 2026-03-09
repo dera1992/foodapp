@@ -157,8 +157,7 @@ export function AdminProductListPage({
 
   const canManageProduct = (product: ProductRow) => {
     if (!isShop) return false;
-    if (!product.shopId || !session.userId) return true;
-    return String(product.shopId) === String(session.userId);
+    return true;
   };
 
   const onDelete = async (product: ProductRow) => {
@@ -314,7 +313,13 @@ export function AdminProductListPage({
                       </td>
                       <td className="px-4 py-4 text-sm text-brand-text">{product.category || '--'}</td>
                       <td className="px-4 py-4 text-sm font-semibold text-brand-primaryDark">{formatCurrency(product.price ?? 0)}</td>
-                      <td className="px-4 py-4 text-sm text-brand-text">{typeof product.qty === 'number' ? product.qty : '--'}</td>
+                      <td className="px-4 py-4 text-sm text-brand-text">
+                        {typeof product.qty === 'number'
+                          ? product.qty
+                          : typeof product.stock === 'number'
+                            ? product.stock
+                            : '--'}
+                      </td>
                       <td className="px-4 py-4">
                         <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold', statusPillClass(product.status))}>
                           {prettyStatus(product.status)}

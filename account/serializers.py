@@ -1,3 +1,4 @@
+from django.db.models import Avg, Count
 from rest_framework import serializers
 from .models import User, Profile, SubscriptionPlan, Shop, ShopSubscription, DispatcherProfile, ShopFollower, ShopNotification, ShopIntegration
 
@@ -31,6 +32,9 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
 
 class ShopSerializer(serializers.ModelSerializer):
     is_shop_open = serializers.SerializerMethodField()
+    products_count = serializers.SerializerMethodField()
+    subscriber_count = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
 
     class Meta:
         model = Shop
@@ -39,6 +43,20 @@ class ShopSerializer(serializers.ModelSerializer):
 
     def get_is_shop_open(self, obj):
         return obj.is_shop_open()
+
+    def get_products_count(self, obj):
+        return obj.products_set.filter(is_active=True).count()
+
+    def get_subscriber_count(self, obj):
+        return obj.followers.count()
+
+    def get_rating(self, obj):
+        summary = obj.products_set.filter(is_active=True).aggregate(
+            average=Avg("reviewrating__rating"),
+            total=Count("reviewrating__id"),
+        )
+        average = summary.get("average")
+        return round(float(average), 1) if average is not None else None
 
 
 class ShopSubscriptionSerializer(serializers.ModelSerializer):

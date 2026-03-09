@@ -44,10 +44,32 @@ class ProductsViewSet(ReadPublicWriteOwnerViewSet):
     ).all()
     serializer_class = ProductsSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if (
+            self.action == "list"
+            and user
+            and user.is_authenticated
+            and not user.is_staff
+            and getattr(user, "role", None) == "shop"
+        ):
+            return queryset.filter(shop__owner=user)
+        return queryset
+
     def get_permissions(self):
         if self.action in ["lookup_product", "load_subcategories", "list", "retrieve"]:
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated(), IsShopUser()]
+
+    def perform_create(self, serializer):
+        shop = self.request.user.shops.first()
+        if not shop:
+            raise Http404("You do not have a shop profile.")
+        serializer.save(shop=shop)
+
+    def perform_update(self, serializer):
+        serializer.save()
 
     @action(detail=False, methods=["get"], url_path="load-subcategories")
     def load_subcategories(self, request):
@@ -104,7 +126,7 @@ class ProductsViewSet(ReadPublicWriteOwnerViewSet):
             if image.product_image:
                 ProductsImages.objects.create(products=new_product, product_image=image.product_image)
 
-        return Response(ProductsSerializer(new_product).data, status=status.HTTP_201_CREATED)
+        return Response(ProductsSerializer(new_product, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 class ProductsImagesViewSet(viewsets.ModelViewSet):

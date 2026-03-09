@@ -1,6 +1,8 @@
 from collections import Counter
 import re
 
+from django.core.cache import cache
+
 from account.models import Profile
 from foodCreate.models import Products
 from order.models import OrderItem, Order
@@ -58,6 +60,18 @@ def get_recommended_products(user, limit=12):
     if not user.is_authenticated:
         return [], {"city": None, "state": None}
 
+    cache_key = f"reco:user:{user.id}:limit:{limit}"
+    cached = cache.get(cache_key)
+    if cached:
+        product_ids = cached.get("product_ids", [])
+        location = cached.get("location", {"city": None, "state": None})
+        products = list(
+            Products.objects.filter(id__in=product_ids, is_active=True, available=True).select_related("shop", "category")
+        )
+        by_id = {p.id: p for p in products}
+        ordered = [by_id[pid] for pid in product_ids if pid in by_id]
+        return ordered, location
+
     purchased_items = (
         OrderItem.objects.filter(user=user, is_ordered=True)
         .select_related("item__category", "item__shop")
@@ -110,5 +124,10 @@ def get_recommended_products(user, limit=12):
 
     scored_products.sort(key=lambda item: item[0], reverse=True)
     recommended_products = [product for _, product in scored_products[:limit]]
+    cache.set(
+        cache_key,
+        {"product_ids": [p.id for p in recommended_products], "location": context["location"]},
+        60 * 10,
+    )
 
     return recommended_products, context["location"]

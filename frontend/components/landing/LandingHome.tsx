@@ -165,24 +165,56 @@ export function LandingHome({ shops, products }: Props) {
       });
   }, [shops, userCoords, radius]);
 
+  const shopDistanceById = useMemo(() => {
+    const map: Record<string, number | null> = {};
+    for (const shop of shops) {
+      if (!shop.id) continue;
+      const distance =
+        userCoords && shop.latitude != null && shop.longitude != null
+          ? haversineKm(userCoords.lat, userCoords.lng, shop.latitude, shop.longitude)
+          : shop.distanceKm ?? null;
+      map[String(shop.id)] = distance;
+    }
+    return map;
+  }, [shops, userCoords]);
+
   const carouselShop = nearbyShops[carouselIdx] ?? null;
   const carouselPrev = () => setCarouselIdx((i) => (i - 1 + nearbyShops.length) % nearbyShops.length);
   const carouselNext = () => setCarouselIdx((i) => (i + 1) % nearbyShops.length);
 
   const rankedDeals = useMemo(() => {
-    return [...products].sort((a, b) => {
-      const discountDiff = savings(b) - savings(a);
-      if (discountDiff !== 0) return discountDiff;
+    const withDistance = products.map((product) => ({
+      ...product,
+      _distanceKm: product.shopId ? (shopDistanceById[String(product.shopId)] ?? null) : null,
+    }));
+
+    const distanceFiltered = userCoords
+      ? withDistance.filter((product) => product._distanceKm == null || product._distanceKm <= 20)
+      : withDistance;
+
+    const source = distanceFiltered.length ? distanceFiltered : withDistance;
+
+    return [...source].sort((a, b) => {
+      const priceDiff = (a.price ?? 0) - (b.price ?? 0);
+      if (priceDiff !== 0) return priceDiff;
+
+      const createdDiff =
+        new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+      if (createdDiff !== 0) return createdDiff;
+
+      const purchaseDiff = (b.recentPurchaseCount ?? 0) - (a.recentPurchaseCount ?? 0);
+      if (purchaseDiff !== 0) return purchaseDiff;
+
+      const aDistance = a._distanceKm ?? Number.MAX_SAFE_INTEGER;
+      const bDistance = b._distanceKm ?? Number.MAX_SAFE_INTEGER;
+      if (aDistance !== bDistance) return aDistance - bDistance;
 
       const expiryDiff = expiryRankDays(a) - expiryRankDays(b);
       if (expiryDiff !== 0) return expiryDiff;
 
-      const priceDiff = (a.price ?? 0) - (b.price ?? 0);
-      if (priceDiff !== 0) return priceDiff;
-
       return String(a.id ?? '').localeCompare(String(b.id ?? ''));
     });
-  }, [products]);
+  }, [products, shopDistanceById, userCoords]);
 
   const featured = rankedDeals[0];
   const productGrid = useMemo(() => (rankedDeals.length ? rankedDeals.slice(0, 4) : []), [rankedDeals]);
@@ -284,13 +316,25 @@ export function LandingHome({ shops, products }: Props) {
             {/* Mini product grid  live deal teaser */}
             <div className="mini-grid">
               {(miniProducts.length ? miniProducts : MINI_FALLBACK).map(
-                (p, i) => (
+                (p, i) => {
+                  const miniImage = typeof (p as Product).image === 'string' ? (p as Product).image : null;
+                  return (
                   <Link
                     key={p.id || i}
                     href={p.id ? `/products/${String(p.id)}` : '/products'}
                     className="mini-card"
                   >
-                    <div className="mini-emoji">{MINI_ICONS[i % MINI_ICONS.length]}</div>
+                    <div className="mini-emoji">
+                      {miniImage ? (
+                        <img
+                          src={miniImage}
+                          alt={p.name || MINI_FALLBACK[i]?.name || 'Product'}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        MINI_ICONS[i % MINI_ICONS.length]
+                      )}
+                    </div>
                     <div>
                       <div className="mini-name">
                         {p.name || MINI_FALLBACK[i]?.name}
@@ -303,7 +347,8 @@ export function LandingHome({ shops, products }: Props) {
                       </div>
                     </div>
                   </Link>
-                ),
+                  );
+                },
               )}
             </div>
           </div>
@@ -601,7 +646,17 @@ export function LandingHome({ shops, products }: Props) {
             </Link>
           </div>
           <div className="deal-image-side">
-            <div className="deal-product-img">{'\u{1F96C}'}</div>
+            <div className="deal-product-img">
+              {featured?.image ? (
+                <img
+                  src={featured.image}
+                  alt={asName(featured)}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                '\u{1F96C}'
+              )}
+            </div>
             <div className="deal-tags">
               <span className="deal-tag">Organic</span>
               <span className="deal-tag">Near expiry</span>
@@ -611,11 +666,11 @@ export function LandingHome({ shops, products }: Props) {
         </div>
       </section>
 
-      {/*  FRESH VEGETABLES  */}
+      {/*  BEST DEALS  */}
       <section className="section section-products">
         <div className="section-header">
           <h2 className="section-title">
-            Fresh <span>Vegetables</span>
+            Best <span>Deals</span>
           </h2>
           <Link href="/products" className="see-all">
             Show all
@@ -646,7 +701,15 @@ export function LandingHome({ shops, products }: Props) {
                 >
                   {wishlistedIds[String(product.id || idx)] ? '\u2665' : '\u2661'}
                 </button>
-                {['\u{1F966}', '\u{1F955}', '\u{1F345}', '\u{1F96C}'][idx % 4]}
+                {product.image ? (
+                  <img
+                    src={product.image}
+                    alt={asName(product)}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  ['\u{1F966}', '\u{1F955}', '\u{1F345}', '\u{1F96C}'][idx % 4]
+                )}
                 <span className="expiry-badge">
                   Exp: {expiryDays(product)} days
                 </span>

@@ -41,6 +41,7 @@ export default function LoginPage() {
         const me = await authMe(tokens.access);
         setCookie('role', me.role, days);
         setCookie('user_id', String(me.id), days);
+        setCookie('user_email', me.email, days);
 
         toast.success('Welcome back! Signing you in…');
 

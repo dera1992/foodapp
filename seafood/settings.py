@@ -420,6 +420,12 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "precompute-analytics-snapshots-every-15-minutes": {
+        "task": "home.tasks.precompute_analytics_snapshots",
+        "schedule": 60.0 * 15,
+    },
+}
 
 # Keep cache default simple in development, optionally use Redis by setting USE_REDIS_CACHE=1
 USE_REDIS_CACHE = env.bool("USE_REDIS_CACHE", default=False)

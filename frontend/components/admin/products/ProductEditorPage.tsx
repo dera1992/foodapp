@@ -163,6 +163,10 @@ function pickString(record: Record<string, unknown>, keys: string[]): string {
   return '';
 }
 
+function extractProductImageUrl(record: Record<string, unknown>): string {
+  return pickString(record, ['url', 'image', 'src', 'product_image']);
+}
+
 function pickArray(record: Record<string, unknown>, keys: string[]): unknown[] {
   for (const key of keys) {
     if (Array.isArray(record[key])) return record[key] as unknown[];
@@ -271,7 +275,7 @@ function mapProductToForm(payload: unknown): ProductForm {
       if (typeof item === 'string') return { url: item };
       if (item && typeof item === 'object') {
         const rec = item as Record<string, unknown>;
-        const url = pickString(rec, ['url', 'image', 'src']);
+        const url = extractProductImageUrl(rec);
         if (!url) return null;
         return { id: toStringValue(rec.id), url };
       }
@@ -589,7 +593,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
           lookupFoodcreateProduct(),
           getFoodcreateSubCategories(),
           isEditMode && productId
-            ? tryFetchJson([`/api/products/${productId}/`, backendUrl(`${apiPaths.adminProducts}${productId}/`)])
+            ? tryFetchJson([backendUrl(`${apiPaths.adminProducts}${productId}/`)])
             : Promise.resolve(null)
         ]);
 
@@ -928,14 +932,14 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
         let lastError: unknown;
         const buildAttempts = () => {
           const fd1 = new FormData();
-          fd1.append('product', productId);
-          fd1.append('image', file);
+          fd1.append('products', productId);
+          fd1.append('product_image', file);
           const fd2 = new FormData();
-          fd2.append('product_id', productId);
-          fd2.append('image', file);
+          fd2.append('product', productId);
+          fd2.append('product_image', file);
           const fd3 = new FormData();
-          fd3.append('product', productId);
-          fd3.append('images', file);
+          fd3.append('product_id', productId);
+          fd3.append('image', file);
           return [fd1, fd2, fd3];
         };
 
@@ -956,7 +960,7 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
               ? (responsePayload as { results: unknown[] }).results[0]
               : responsePayload;
         const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
-        const url = pickString(record, ['url', 'image', 'src']);
+        const url = extractProductImageUrl(record);
         if (url) createdImages.push({ id: toStringValue(record.id), url });
       }
 
@@ -1015,11 +1019,10 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
       fd.append('delivery_time', form.deliveryTime);
       fd.append('brand', form.brand);
       fd.append('weight', form.weight);
-      fd.append('quantity', form.quantity);
+      fd.append('stock', form.quantity);
       fd.append('available', String(form.available));
       fd.append('description', form.description);
       fd.append('nutrition', form.nutrition);
-      form.images.forEach((image) => fd.append('images', image));
 
       const backendPath = isEditMode && productId ? `${apiPaths.adminProducts}${productId}/` : apiPaths.createProduct;
       const fallbackUrl = backendUrl(backendPath);
@@ -1045,6 +1048,53 @@ export function ProductEditorPage({ mode, productId }: { mode: EditorMode; produ
 
       if (!res?.ok) {
         throw lastError ?? new Error('Failed to save product');
+      }
+
+      const savedPayload = await res.json().catch(() => null);
+      const savedRecord = savedPayload && typeof savedPayload === 'object' ? (savedPayload as Record<string, unknown>) : null;
+      const savedProductId = productId ?? (savedRecord ? toStringValue(savedRecord.id) : '');
+
+      if (savedProductId && form.images.length > 0) {
+        const createdImages: { id?: string; url: string }[] = [];
+        for (const file of form.images) {
+          let responsePayload: unknown;
+          let imageError: unknown;
+          const uploadAttempts = () => {
+            const fd1 = new FormData();
+            fd1.append('products', savedProductId);
+            fd1.append('product_image', file);
+            const fd2 = new FormData();
+            fd2.append('product', savedProductId);
+            fd2.append('product_image', file);
+            return [fd1, fd2];
+          };
+          for (const imageFormData of uploadAttempts()) {
+            try {
+              responsePayload = await createFoodcreateProductImage(imageFormData);
+              break;
+            } catch (error) {
+              imageError = error;
+            }
+          }
+          if (!responsePayload) throw (imageError ?? new Error('Image upload failed'));
+          const item =
+            Array.isArray(responsePayload) ? responsePayload[0]
+              : responsePayload && typeof responsePayload === 'object' && Array.isArray((responsePayload as { results?: unknown[] }).results)
+                ? (responsePayload as { results: unknown[] }).results[0]
+                : responsePayload;
+          const imageRecord = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+          const url = extractProductImageUrl(imageRecord);
+          if (url) createdImages.push({ id: toStringValue(imageRecord.id), url });
+        }
+
+        if (createdImages.length) {
+          const nextExisting = [...form.existingImages, ...createdImages];
+          update({
+            existingImages: nextExisting,
+            images: [],
+            imagePreviews: nextExisting.map((img) => img.url),
+          });
+        }
       }
 
       router.push('/admin/products?saved=1');

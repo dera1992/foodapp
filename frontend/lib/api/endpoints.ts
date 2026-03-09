@@ -154,6 +154,15 @@ function pickArray(record: Record<string, unknown>, keys: string[]): unknown[] {
   return [];
 }
 
+function toAbsoluteMediaUrl(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return `${BASE_URL.replace(/\/api\/v1\/?$/, '')}${trimmed}`;
+  return trimmed;
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -470,24 +479,38 @@ export function toProduct(raw: unknown): Product {
       return undefined;
     })
     .filter(Boolean) as string[];
+  const categoryRecord =
+    record.category && typeof record.category === 'object' ? (record.category as Record<string, unknown>) : null;
   const gallery = pickArray(record, ['gallery', 'images'])
     .map((item) => {
-      if (typeof item === 'string') return item;
-      if (item && typeof item === 'object') return pickString(item as Record<string, unknown>, ['image', 'url']);
+      if (typeof item === 'string') return toAbsoluteMediaUrl(item);
+      if (item && typeof item === 'object') {
+        return toAbsoluteMediaUrl(pickString(item as Record<string, unknown>, ['image', 'url', 'product_image']));
+      }
       return undefined;
     })
     .filter(Boolean) as string[];
+  const primaryImage =
+    toAbsoluteMediaUrl(pickString(record, ['image', 'photo', 'thumbnail'])) ??
+    gallery[0] ??
+    null;
   const description = pickString(record, ['description']) ?? '';
 
   return {
     id: productId,
     slug: pickString(record, ['slug']) ?? slugify(name),
     name,
+    createdAt: pickString(record, ['created_at', 'createdAt']) ?? null,
     description,
     shortDescription: pickString(record, ['short_description']) ?? description,
-    image: pickString(record, ['image', 'photo', 'thumbnail']) ?? null,
+    image: primaryImage,
     gallery,
-    category: pickString(record, ['category']) ?? categories[0],
+    category:
+      pickString(record, ['category_name']) ??
+      pickString(record, ['category']) ??
+      pickString(categoryRecord ?? {}, ['name', 'title']) ??
+      categories[0],
+    stock: toNumber(record.stock ?? record.quantity ?? record.qty) || null,
     categories,
     price: pricing.price,
     oldPrice: pricing.oldPrice,
@@ -497,6 +520,7 @@ export function toProduct(raw: unknown): Product {
     expiresOn: pickString(record, ['expiry_date', 'expires_on', 'best_before']) ?? null,
     status: pickString(record, ['status']) ?? null,
     delivery: pickString(record, ['delivery', 'delivery_mode', 'delivery_type']) ?? null,
+    recentPurchaseCount: toNumber(record.recent_purchase_count ?? record.recentPurchaseCount) || null,
     rating: toNumber(record.rating) || null,
     reviewCount: toNumber(record.review_count ?? record.reviews_count) || null
   };
@@ -544,7 +568,10 @@ function toCartItem(raw: unknown): CartItem {
       'Cart item',
     shopId: String(product.shop_id ?? record.shop_id ?? product.shop ?? record.shop ?? '').trim() || undefined,
     shopName: pickString(product, ['shop_name']) ?? pickString(record, ['shop_name']),
-    image: pickString(product, ['image']) ?? pickString(record, ['image']) ?? null,
+    image:
+      toAbsoluteMediaUrl(pickString(product, ['image', 'photo', 'thumbnail'])) ??
+      toAbsoluteMediaUrl(pickString(record, ['image', 'photo', 'thumbnail'])) ??
+      null,
     quantity,
     unitPrice,
     oldUnitPrice: oldPrice > unitPrice ? oldPrice : undefined,
@@ -745,8 +772,20 @@ export async function getProducts() {
 }
 
 export async function getProduct(productId: string) {
-  const payload = await requestWithFallback<unknown>([apiPaths.productById(productId), apiPaths.productByIdFallback(productId)]);
-  return toProduct(payload);
+  try {
+    const payload = await requestWithFallback<unknown>([apiPaths.productById(productId), apiPaths.productByIdFallback(productId)]);
+    return toProduct(payload);
+  } catch (error) {
+    const listPayload = await requestWithFallback<unknown>([apiPaths.products, apiPaths.productsAll, apiPaths.productsFallback]);
+    const normalized = normalizeListResponse<unknown>(listPayload);
+    const matched = normalized.data.find((item) => {
+      const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      if (!record) return false;
+      return String(record.id ?? record.product_id ?? '') === String(productId);
+    });
+    if (matched) return toProduct(matched);
+    throw error;
+  }
 }
 
 export async function getCart() {
