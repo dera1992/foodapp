@@ -28,7 +28,7 @@ type FormState = {
   deliverySlot: string;
   address: { line1: string; line2: string; city: string; county: string; postcode: string; notes: string; saveAddress: boolean };
   contact: { firstName: string; lastName: string; email: string; phone: string; saveContact: boolean };
-  payment: { method: PaymentMethod; cardNumber: string; cardName: string; cardExpiry: string; cardCvv: string };
+  payment: { method: PaymentMethod };
   promoCode: string;
   promoApplied: boolean;
   promoDiscount: number;
@@ -87,7 +87,7 @@ export function CheckoutPageClient({ initialCart, savedAddresses, initialTimeSlo
     deliverySlot: initialTimeSlots.find((s) => s.available > 0)?.id ?? '',
     address: { line1: '', line2: '', city: '', county: '', postcode: '', notes: '', saveAddress: true },
     contact: { firstName: '', lastName: '', email: '', phone: '', saveContact: true },
-    payment: { method: 'card', cardNumber: '', cardName: '', cardExpiry: '', cardCvv: '' },
+    payment: { method: 'card' },
     promoCode: '',
     promoApplied: false,
     promoDiscount: 0
@@ -175,11 +175,6 @@ export function CheckoutPageClient({ initialCart, savedAddresses, initialTimeSlo
     }
     if (!form.contact.email.trim()) next.contactEmail = 'Email is required';
     if (!form.contact.phone.trim()) next.contactPhone = 'Phone is required';
-    if (form.payment.method === 'card') {
-      if (!form.payment.cardNumber.trim()) next.cardNumber = 'Card number is required';
-      if (!form.payment.cardExpiry.trim()) next.cardExpiry = 'Card expiry is required';
-      if (!form.payment.cardCvv.trim()) next.cardCvv = 'CVV is required';
-    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -196,12 +191,20 @@ export function CheckoutPageClient({ initialCart, savedAddresses, initialTimeSlo
           address: form.deliveryMode === 'pickup' ? undefined : form.address,
           contact: form.contact,
           payment: form.payment,
-          promoCode: form.promoApplied ? form.promoCode : undefined
+          promoCode: form.promoApplied ? form.promoCode : undefined,
         });
         if (!result.success) throw new Error(result.error || 'Unable to place order');
+
+        if (result.payment_method === 'card' && result.payment_url) {
+          // Redirect to Stripe-hosted payment page (or Paystack when gateway=paystack)
+          toast.success('Redirecting to payment…');
+          window.location.href = result.payment_url;
+          return;
+        }
+
+        // Transfer / cash — go straight to confirmation
         toast.success('Order placed');
-        const ids = result.orderIds.join(',');
-        router.push(ids ? `/order/confirmation?orders=${encodeURIComponent(ids)}` : '/account/orders');
+        router.push(`/order/confirmation?ref=${encodeURIComponent(result.order_ref)}`);
       } catch (error) {
         toast.error(toErrorMessage(error, 'Could not place order.'));
       }
@@ -339,16 +342,10 @@ export function CheckoutPageClient({ initialCart, savedAddresses, initialTimeSlo
                       </button>
                       {active && m.id === 'card' ? (
                         <div className={styles.payBody}>
-                          <div className={styles.row1}><label className={styles.field}><span>Card number</span><input className={cn(styles.input, errors.cardNumber && styles.inputError)} value={form.payment.cardNumber} onChange={(e) => setForm((p) => ({ ...p, payment: { ...p.payment, cardNumber: e.target.value.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim() } }))} /></label></div>
-                          <div className={styles.row1}><label className={styles.field}><span>Name on card</span><input className={styles.input} value={form.payment.cardName} onChange={(e) => setForm((p) => ({ ...p, payment: { ...p.payment, cardName: e.target.value } }))} /></label></div>
-                          <div className={styles.row2}>
-                            <label className={styles.field}><span>Expiry</span><input className={cn(styles.input, errors.cardExpiry && styles.inputError)} value={form.payment.cardExpiry} onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setForm((p) => ({ ...p, payment: { ...p.payment, cardExpiry: d.length > 2 ? `${d.slice(0, 2)} / ${d.slice(2)}` : d } })); }} /></label>
-                            <label className={styles.field}><span>CVV</span><input className={cn(styles.input, errors.cardCvv && styles.inputError)} value={form.payment.cardCvv} onChange={(e) => setForm((p) => ({ ...p, payment: { ...p.payment, cardCvv: e.target.value.replace(/\D/g, '').slice(0, 4) } }))} /></label>
-                          </div>
-                          {errors.cardNumber ? <p className={styles.error}>{errors.cardNumber}</p> : null}
-                          {errors.cardExpiry ? <p className={styles.error}>{errors.cardExpiry}</p> : null}
-                          {errors.cardCvv ? <p className={styles.error}>{errors.cardCvv}</p> : null}
-                          <div className={styles.secureNote}><Lock className="h-3.5 w-3.5" /> Secured by SSL</div>
+                          <p style={{ fontSize: '0.84rem', color: '#6b7b6d', margin: '0 0 8px' }}>
+                            You will be securely redirected to Stripe to complete your card payment after placing the order.
+                          </p>
+                          <div className={styles.secureNote}><Lock className="h-3.5 w-3.5" /> Secured by Stripe · SSL encrypted</div>
                         </div>
                       ) : active && m.id === 'transfer' ? (
                         <div className={styles.payBody}>

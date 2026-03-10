@@ -7,6 +7,7 @@ import { Heart, ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types/api';
 import { addToCart } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
+import { getProductPath } from '@/lib/products';
 
 function getFallbackEmoji(category?: unknown): string {
   const cat = String(category ?? '').toLowerCase();
@@ -34,6 +35,7 @@ export function ProductCard({ product }: { product: Product }) {
         : null;
   const fallbackEmoji = getFallbackEmoji(category);
   const productId = String(product.id ?? '');
+  const productPath = getProductPath(product);
 
   const onAddToCart = () => {
     startTransition(async () => {
@@ -55,14 +57,14 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <article className="product-card">
-      <Link href={`/products/${productId}`} className="product-img" aria-label={`View ${productName}`}>
+      <Link href={productPath} className="product-img" aria-label={`View ${productName}`}>
         {product.image ? <img src={product.image} alt={productName} /> : <span>{fallbackEmoji}</span>}
         <span className="wishlist-card-heart" aria-hidden="true">
           <Heart size={15} />
         </span>
       </Link>
       <div className="product-body">
-        <Link href={`/products/${productId}`} className="product-name" style={{ display: 'block', textDecoration: 'none' }}>
+        <Link href={productPath} className="product-name" style={{ display: 'block', textDecoration: 'none' }}>
           {productName}
         </Link>
         <p className="product-desc">{productDescription}</p>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { Product } from '@/types/api';
 import { addToCart, addWishlist, getWishlist, removeWishlistByProduct } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
+import { getProductPath } from '@/lib/products';
 
 type SortKey = 'latest' | 'price-asc' | 'price-desc' | 'expiry' | 'discount';
 type ViewMode = 'list' | 'grid';
@@ -161,7 +162,7 @@ function ProductListCard({
           </div>
         ) : null}
 
-        <Link href={`/products/${product.id}`} className="pl-pcl-name-link">
+        <Link href={getProductPath(product)} className="pl-pcl-name-link">
           <div className="pl-pcl-name">{product.name}</div>
         </Link>
 
@@ -257,7 +258,7 @@ function ProductGridCard({
           <div className="pl-pcg-shop">{product.shopName}</div>
         ) : null}
 
-        <Link href={`/products/${product.id}`} className="pl-pcg-name-link">
+        <Link href={getProductPath(product)} className="pl-pcg-name-link">
           <div className="pl-pcg-name">{product.name}</div>
         </Link>
 
@@ -295,15 +296,25 @@ function ProductGridCard({
 }
 
 /* ── Main component ── */
-type Props = { products: Product[]; allCategories: string[]; isAuthenticated?: boolean };
+type Props = {
+  products: Product[];
+  allCategories: string[];
+  initialSelectedCategories?: string[];
+  isAuthenticated?: boolean;
+};
 
-export function ProductListClient({ products, allCategories, isAuthenticated = false }: Props) {
+export function ProductListClient({
+  products,
+  allCategories,
+  initialSelectedCategories = [],
+  isAuthenticated = false,
+}: Props) {
   const router = useRouter();
   const priceMax = useMemo(() => Math.max(50, ...products.map((p) => p.price)), [products]);
 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(initialSelectedCategories);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, priceMax]);
   const [expiryWindows, setExpiryWindows] = useState<ExpiryWindow[]>([]);
   const [nearby, setNearby] = useState(false);

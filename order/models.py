@@ -52,6 +52,13 @@ class OrderItem(models.Model):
         return self.get_total_item_price()
 
 
+PAYMENT_METHOD_CHOICES = [
+    ('card', 'Card'),
+    ('transfer', 'Bank Transfer'),
+    ('cash', 'Cash on Delivery'),
+]
+
+
 class Order(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL,
                              on_delete=models.CASCADE)
@@ -69,6 +76,17 @@ class Order(models.Model):
         'Coupon', on_delete=models.SET_NULL, blank=True, null=True)
     being_delivered = models.BooleanField(default=False)
     received = models.BooleanField(default=False)
+    # Payment & checkout details
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='card')
+    payment_reference = models.CharField(max_length=255, blank=True)
+    # Delivery details (denormalised for speed)
+    delivery_address_text = models.TextField(blank=True)
+    delivery_date = models.DateField(null=True, blank=True)
+    delivery_slot = models.CharField(max_length=50, blank=True)
+    # Contact details
+    contact_name = models.CharField(max_length=200, blank=True)
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=30, blank=True)
 
     class Meta:
         ordering = ('-created',)
@@ -175,3 +193,20 @@ class Coupon(models.Model):
 
     def __str__(self):
         return self.code
+
+
+class SavedAddress(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='saved_addresses')
+    label = models.CharField(max_length=50, default='Home')
+    line1 = models.CharField(max_length=200)
+    line2 = models.CharField(max_length=200, blank=True)
+    city = models.CharField(max_length=100)
+    county = models.CharField(max_length=100, blank=True)
+    postcode = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f"{self.user.email} — {self.label}: {self.line1}, {self.city}"

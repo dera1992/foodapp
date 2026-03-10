@@ -15,6 +15,7 @@ import {
   updateCartItem
 } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/client';
+import { getProductPath } from '@/lib/products';
 type Props = {
   product: Product;
   related: Product[];
@@ -324,7 +325,7 @@ function RelatedCard({ product, index }: { product: Product; index: number }) {
     : null);
 
   return (
-    <Link href={`/products/${product.id}`} className="pd-related-card" style={{ animationDelay: `${index * 0.07}s` }}>
+    <Link href={getProductPath(product)} className="pd-related-card" style={{ animationDelay: `${index * 0.07}s` }}>
       <div className="pd-rc2-img">
         {product.image ? <img src={product.image} alt={product.name} /> : <span className="pd-rc2-emoji"><IconImage /></span>}
         {discount ? <div className="pd-rc2-badge">{discount}% OFF</div> : null}
@@ -373,7 +374,7 @@ export function ProductDetailView({
   const expInfo = getExpiryInfo(product.expiresOn);
   const categories = product.categories?.length ? product.categories : product.category ? [product.category] : [];
   const filledStars = Math.round(Math.max(0, Math.min(5, product.rating ?? 0)));
-  const shareUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/products/${product.id}`;
+  const shareUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}${getProductPath(product)}`;
 
   useEffect(() => {
     if (!isAuthenticated) {

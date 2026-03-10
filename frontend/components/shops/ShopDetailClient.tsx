@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { StartChatDialog } from '@/components/chat/StartChatDialog';
 import type { Product, Shop, ShopReview } from '@/types/api';
+import { getProductPath } from '@/lib/products';
 
 type Tab = 'products' | 'reviews' | 'about';
 
@@ -135,7 +136,7 @@ function ProductsTab({
           const pct = savings(p);
           const exp = expiryDays(p);
           return (
-            <Link href={`/products/${p.id}`} key={p.id} className="shd-prod-card">
+            <Link href={getProductPath(p)} key={p.id} className="shd-prod-card">
               <div className="shd-pc-thumb">
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                   {placeholders[i % placeholders.length]}

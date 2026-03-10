@@ -6,21 +6,26 @@ import { SectionEmptyState } from '@/components/analytics/SectionEmptyState';
 import { StatusPill } from '@/components/analytics/StatusPill';
 import { SubscribedShopsSection } from '@/components/analytics/SubscribedShopsSection';
 import { TableCard } from '@/components/analytics/TableCard';
-import { Container } from '@/components/layout/Container';
 import { getCustomerAnalyticsDashboard } from '@/lib/api/endpoints';
 import { formatDate } from '@/lib/utils/format';
 import { formatCurrency } from '@/lib/utils/money';
 
-export default async function CustomerAnalyticsPage() {
-  const analytics = await getCustomerAnalyticsDashboard().catch(() => null);
+export default async function CustomerAnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ days?: string }>;
+}) {
+  const { days } = await searchParams;
+  const daysNum = days ? parseInt(days, 10) : undefined;
+  const analytics = await getCustomerAnalyticsDashboard(daysNum).catch(() => null);
 
   return (
-    <div className="bf-analytics-page-wrap py-10">
-      <Container className="space-y-8">
+    <div className="space-y-8">
         <AnalyticsHeader
+          activeDays={daysNum ?? null}
           breadcrumbs={[
-            { label: 'Home', href: '/' },
-            { label: 'My Analytics' }
+            { label: 'Account', href: '/account' },
+            { label: 'Analytics' }
           ]}
           title="Customer"
           titleAccent="Analytics"
@@ -140,7 +145,6 @@ export default async function CustomerAnalyticsPage() {
             )}
           </TableCard>
         </div>
-      </Container>
     </div>
   );
 }

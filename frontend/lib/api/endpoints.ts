@@ -63,10 +63,11 @@ export const apiPaths = {
   cartRemoveSingleFromCart: '/cart/remove-single-item-from-cart/',
   cartUpdateQuantity: '/cart/update_quantity/',
   cartOrderSummary: '/cart/order-summary/',
-  checkoutPlaceOrder: '/api/checkout/place-order/',
-  checkoutTimeSlots: '/api/checkout/time-slots/',
-  checkoutSavedAddresses: '/api/user/saved-addresses/',
-  checkoutPromoValidate: '/api/promo/validate/',
+  checkoutPlaceOrder: '/api/v1/order/place-order/',
+  checkoutTimeSlots: '/api/v1/order/time-slots/',
+  checkoutSavedAddresses: '/api/v1/order/saved-addresses/',
+  checkoutPromoValidate: '/api/v1/order/validate-promo/',
+  checkoutVerify: '/api/v1/order/verify-checkout/',
   addCoupon: '/order/add-coupon/',
   wishlist: '/home/favourites/',
   wishlistFallback: '/wishlist/',
@@ -115,6 +116,8 @@ export const apiPaths = {
   adminProducts: '/foodcreate/productss/',
   adminOrders: '/order/orders/',
   myOrders: '/order/my-orders/',
+  myOrderDetail: (ref: string) => `/order/my-orders/${ref}/`,
+  ownerOrders: '/order/owner-orders/',
   adminCustomers: '/home/ads/customers/',
   orderTracking: '/order/tracking/',
   createProduct: '/foodcreate/productss/',
@@ -127,6 +130,7 @@ export const apiPaths = {
   subscriptionPlanById: (id: string) => `/account/subscription-plans/${id}/`,
   adminUsers: '/account/users/',
   adminUserById: (id: string) => `/account/users/${id}/`,
+  ownerInformations: '/owner/informations/',
 } as const;
 
 function toNumber(value: unknown): number {
@@ -894,6 +898,7 @@ export type CheckoutPlaceOrderPayload = {
     county?: string;
     postcode: string;
     notes?: string;
+    saveAddress?: boolean;
   };
   contact: {
     firstName?: string;
@@ -913,7 +918,10 @@ export type CheckoutPlaceOrderPayload = {
 
 export type CheckoutPlaceOrderResponse = {
   success: boolean;
-  orderIds: string[];
+  order_ref: string;
+  order_id?: string;
+  payment_url?: string;   // present for card payments — redirect user here
+  payment_method: 'card' | 'transfer' | 'cash';
   error?: string;
 };
 
@@ -936,8 +944,20 @@ function defaultCheckoutTimeSlots(date?: string): CheckoutTimeSlot[] {
 }
 
 export async function getCheckoutTimeSlots(date?: string): Promise<CheckoutTimeSlot[]> {
-  // Backend currently has no dedicated /checkout/time-slots endpoint.
-  // Return deterministic default slots so checkout remains functional without 404 noise.
+  try {
+    const payload = await apiRequest<unknown>(`${apiPaths.checkoutTimeSlots}${date ? `?date=${date}` : ''}`);
+    const list = Array.isArray(payload) ? payload : [];
+    if (list.length) {
+      return list.map((s) => {
+        const r = s && typeof s === 'object' ? (s as Record<string, unknown>) : {};
+        return {
+          id: String(r.id ?? ''),
+          label: String(r.label ?? r.id ?? ''),
+          available: typeof r.available === 'number' ? r.available : 5,
+        };
+      });
+    }
+  } catch { /* fall through to defaults */ }
   return defaultCheckoutTimeSlots(date);
 }
 
@@ -979,20 +999,39 @@ export async function validateCheckoutPromo(code: string, subtotal: number): Pro
 }
 
 export async function placeCheckoutOrder(payload: CheckoutPlaceOrderPayload): Promise<CheckoutPlaceOrderResponse> {
-  const raw = await apiRequest<unknown>(apiPaths.checkoutPlaceOrder, {
+  // Map frontend shape to backend shape
+  const body = {
+    payment_method: payload.payment.method,
+    contact: payload.contact,
+    address: payload.address,
+    delivery_date: payload.deliveryDate,
+    delivery_slot: payload.deliverySlot,
+    promo_code: payload.promoCode,
+    save_address: payload.address?.saveAddress ?? false,
+    shop_modes: payload.shopModes,
+  };
+  const raw = await apiRequest<unknown>(apiPaths.checkoutPlaceOrder, { method: 'POST', body });
+  const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return {
+    success: Boolean(record.success),
+    order_ref: String(record.order_ref ?? record.ref ?? ''),
+    order_id: record.order_id ? String(record.order_id) : undefined,
+    payment_url: record.payment_url ? String(record.payment_url) : undefined,
+    payment_method: (record.payment_method as 'card' | 'transfer' | 'cash') ?? payload.payment.method,
+    error: pickString(record, ['detail', 'error', 'message']),
+  };
+}
+
+export async function verifyCheckoutPayment(params: { session_id?: string; reference?: string }): Promise<{ verified: boolean; order_ref: string; order_id: string }> {
+  const raw = await apiRequest<unknown>(apiPaths.checkoutVerify, {
     method: 'POST',
-    body: payload
+    body: params,
   });
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const orderIdsRaw = Array.isArray(record.orderIds)
-    ? record.orderIds
-    : Array.isArray(record.order_ids)
-      ? record.order_ids
-      : [];
   return {
-    success: typeof record.success === 'boolean' ? record.success : orderIdsRaw.length > 0,
-    orderIds: orderIdsRaw.map((id) => String(id)),
-    error: pickString(record, ['error', 'detail', 'message'])
+    verified: Boolean(record.verified),
+    order_ref: String(record.order_ref ?? ''),
+    order_id: String(record.order_id ?? ''),
   };
 }
 
@@ -1063,8 +1102,9 @@ export async function saveWishlistPreferences(itemId: string, payload: Record<st
   return apiRequest<unknown>(apiPaths.wishlistPreferences(itemId), { method: 'POST', body: payload });
 }
 
-export async function getCustomerAnalytics() {
-  const payload = await apiRequest<unknown>(apiPaths.customerAnalytics);
+export async function getCustomerAnalytics(days?: number) {
+  const url = days ? `${apiPaths.customerAnalytics}?days=${days}` : apiPaths.customerAnalytics;
+  const payload = await apiRequest<unknown>(url);
   return toCustomerAnalytics(payload);
 }
 
@@ -1086,8 +1126,8 @@ export async function getNearbyShops() {
   return { ...normalized, data: normalized.data.map(toShop) };
 }
 
-export async function getCustomerAnalyticsDashboard(): Promise<CustomerAnalyticsDashboard> {
-  const [analyticsResult, wishlistResult, shopsResult] = await Promise.allSettled([getCustomerAnalytics(), getWishlist(), getShops()]);
+export async function getCustomerAnalyticsDashboard(days?: number): Promise<CustomerAnalyticsDashboard> {
+  const [analyticsResult, wishlistResult, shopsResult] = await Promise.allSettled([getCustomerAnalytics(days), getWishlist(), getShops()]);
   const analytics =
     analyticsResult.status === 'fulfilled'
       ? analyticsResult.value
@@ -1883,7 +1923,7 @@ export async function getShopAnalyticsDashboard(): Promise<ShopAnalyticsDashboar
     percent: clampPercent((customer.orders / maxCustomerOrders) * 100)
   }));
 
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0) || base.totalRevenue;
+  const totalRevenue = orders.reduce((sum, order) => sum + (typeof order.total === 'number' ? order.total : 0), 0) || base.totalRevenue;
   const totalOrders = orders.length || base.totalOrders;
   const itemsSold = topSellingItems.reduce((sum, item) => sum + item.units, 0) || base.itemsSold;
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : base.avgOrderValue;
@@ -1921,12 +1961,21 @@ export async function getAdminProducts() {
 
 export async function getAdminOrders() {
   const payload = await apiRequest<unknown>(apiPaths.adminOrders);
-  return normalizeListResponse<{ id: string; customer: string; total: number; status: string }>(payload);
+  return normalizeListResponse<Record<string, unknown>>(payload);
 }
 
 export async function getUserOrders() {
-  const payload = await requestWithFallback<unknown>([apiPaths.myOrders, apiPaths.adminOrders]);
-  return normalizeListResponse<{ id: string; customer: string; total: number; status: string }>(payload);
+  const payload = await apiRequest<unknown>(apiPaths.myOrders).catch(() => null);
+  return normalizeListResponse<Record<string, unknown>>(payload);
+}
+
+export async function getShopOrders() {
+  const payload = await apiRequest<unknown>(apiPaths.ownerOrders).catch(() => null);
+  return normalizeListResponse<Record<string, unknown>>(payload);
+}
+
+export async function getOrderDetail(ref: string) {
+  return apiRequest<Record<string, unknown>>(apiPaths.myOrderDetail(ref));
 }
 
 export async function subscribeShop(shopId: string) {
@@ -2684,4 +2733,29 @@ export async function patchAdminUser(id: string, payload: Partial<AdminUser>): P
 
 export async function deleteAdminUser(id: string): Promise<void> {
   await apiRequest<void>(apiPaths.adminUserById(id), { method: 'DELETE' });
+}
+
+export type ContactInformationPayload = {
+  name?: string;
+  email: string;
+  subject: string;
+  message: string;
+};
+
+export type ContactInformationResponse = {
+  id: number | string;
+  name?: string | null;
+  email: string;
+  subject: string;
+  message: string;
+  pub_date?: string;
+};
+
+export async function createContactInformation(
+  payload: ContactInformationPayload,
+): Promise<ContactInformationResponse> {
+  return apiRequest<ContactInformationResponse>(apiPaths.ownerInformations, {
+    method: 'POST',
+    body: payload,
+  });
 }

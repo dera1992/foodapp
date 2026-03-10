@@ -9,6 +9,7 @@ import {
   getThreads,
 } from '@/lib/api/endpoints';
 import { getSession } from '@/lib/auth/session';
+import { filterVisibleProducts } from '@/lib/products';
 
 export default async function ShopDetailsPage({
   params,
@@ -28,8 +29,8 @@ export default async function ShopDetailsPage({
 
   if (!shop) return notFound();
 
-  const products = productsResult.data;
   const isOwner = session.isAuthenticated && session.role === 'shop';
+  const products = isOwner ? productsResult.data : filterVisibleProducts(productsResult.data);
   const ownerUnreadMessages = isOwner
     ? await getThreads()
         .then((result) =>

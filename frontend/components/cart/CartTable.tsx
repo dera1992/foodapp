@@ -7,6 +7,7 @@ import type { CartItem } from '@/types/api';
 import { formatCurrency } from '@/lib/utils/money';
 import { QuantityControl } from '@/components/marketplace/QuantityControl';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { getProductPath } from '@/lib/products';
 
 type CartTableProps = {
   items: CartItem[];
@@ -49,7 +50,7 @@ export function CartTable({ items, loading = false, onQuantityChange, onRemove }
             <div>
               <h3>{item.name}</h3>
               <p>{item.shopName || 'Local shop'}</p>
-              <Link href={`/products/${item.productId}`} className="bf-cart-mobile-link">
+              <Link href={getProductPath({ id: item.productId, name: item.name })} className="bf-cart-mobile-link">
                 View product
               </Link>
             </div>

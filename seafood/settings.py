@@ -295,10 +295,19 @@ PAYSTACK_SETTINGS = {
     "SUCCESS_URL": "paystack:success_page",
     "FAILURE_URL": "paystack:failure_page",
 }
-PAYSTACK_PUBLIC_KEY=''
-PAYSTACK_SECRET_KEY=''
+PAYSTACK_PUBLIC_KEY=env.str('PAYSTACK_PUBLIC_KEY', default='')
+PAYSTACK_SECRET_KEY=env.str('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_SUCCESS_URL='order:payment_confirm'
 PAYSTACK_FAILED_URL='owner:failure'
+
+# ── Payment gateway ───────────────────────────────────────────────────────────
+# Set to 'stripe' for UK market, 'paystack' for African market.
+PAYMENT_GATEWAY = env.str('PAYMENT_GATEWAY', default='stripe')
+
+# Stripe (UK)
+STRIPE_SECRET_KEY = env.str('STRIPE_SECRET_KEY', default='')
+STRIPE_PUBLISHABLE_KEY = env.str('STRIPE_PUBLISHABLE_KEY', default='')
+STRIPE_WEBHOOK_SECRET = env.str('STRIPE_WEBHOOK_SECRET', default='')
 
 # SOCIAL_AUTH_POSTGRES_JSONFIELD = True
 

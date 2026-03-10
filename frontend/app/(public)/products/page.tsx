@@ -3,14 +3,21 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { ProductListClient } from '@/components/products/ProductListClient';
 import { getProducts } from '@/lib/api/endpoints';
 import { getSession } from '@/lib/auth/session';
+import { filterVisibleProducts } from '@/lib/products';
 
 export const metadata = { title: 'Browse Products — BunchFood' };
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ category?: string }>;
+}) {
   const [products, session] = await Promise.all([
-    getProducts().then((r) => r.data).catch(() => []),
+    getProducts().then((r) => filterVisibleProducts(r.data)).catch(() => []),
     getSession(),
   ]);
+  const params = await searchParams;
+  const initialSelectedCategories = params?.category ? [params.category] : [];
 
   const categoriesSet = new Set<string>();
   for (const p of products) {
@@ -31,6 +38,7 @@ export default async function ProductsPage() {
         <ProductListClient
           products={products}
           allCategories={allCategories}
+          initialSelectedCategories={initialSelectedCategories}
           isAuthenticated={session.isAuthenticated}
         />
       </Suspense>

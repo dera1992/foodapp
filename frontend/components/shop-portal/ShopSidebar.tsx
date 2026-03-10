@@ -7,19 +7,23 @@ import { cn } from '@/lib/utils/cn';
 type NavLink = { href: string; label: string; icon: string };
 
 const links: NavLink[] = [
-  { href: '/admin',              label: 'Dashboard',    icon: '📊' },
-  { href: '/admin/analytics',    label: 'Analytics',    icon: '📈' },
-  { href: '/admin/orders',       label: 'Orders',       icon: '📋' },
-  { href: '/admin/products',     label: 'Products',     icon: '📦' },
-  { href: '/admin/products/new', label: 'Add Product',  icon: '➕' },
-  { href: '/admin/customers',    label: 'Customers',    icon: '👥' },
-  { href: '/admin/followers',    label: 'Followers',    icon: '🔔' },
-  { href: '/admin/integrations', label: 'Integrations', icon: '🔗' },
-  { href: '/admin/plans',        label: 'My Plan',      icon: '⭐' },
-  { href: '/admin/settings',     label: 'Settings',     icon: '⚙️' },
+  { href: '/admin', label: 'Dashboard', icon: '\u{1F4CA}' },
+  { href: '/admin/analytics', label: 'Analytics', icon: '\u{1F4C8}' },
+  { href: '/admin/orders', label: 'Orders', icon: '\u{1F4CB}' },
+  { href: '/admin/products', label: 'Products', icon: '\u{1F4E6}' },
+  { href: '/admin/products/new', label: 'Add Product', icon: '\u2795' },
+  { href: '/admin/customers', label: 'Customers', icon: '\u{1F465}' },
+  { href: '/admin/followers', label: 'Followers', icon: '\u{1F514}' },
+  { href: '/admin/integrations', label: 'Integrations', icon: '\u{1F517}' },
+  { href: '/admin/plans', label: 'My Plan', icon: '\u2B50' },
+  { href: '/admin/settings', label: 'Settings', icon: '\u2699\uFE0F' },
 ];
 
-export function ShopSidebar({ open = false, shopName = 'My Shop', initials = 'SH' }: {
+export function ShopSidebar({
+  open = false,
+  shopName = 'My Shop',
+  initials = 'SH',
+}: {
   open?: boolean;
   shopName?: string;
   initials?: string;
@@ -37,17 +41,10 @@ export function ShopSidebar({ open = false, shopName = 'My Shop', initials = 'SH
       <nav className="flex-1 space-y-1 p-3">
         <p className="bf-admin-nav-label">Navigation</p>
         {links.map((link) => {
-          // Dashboard is active only on exact match; others use prefix match
-          const isActive = link.href === '/admin'
-            ? pathname === '/admin'
-            : pathname.startsWith(link.href);
+          const isActive = link.href === '/admin' ? pathname === '/admin' : pathname.startsWith(link.href);
 
           return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn('bf-admin-nav-item', isActive && 'active')}
-            >
+            <Link key={link.href} href={link.href} className={cn('bf-admin-nav-item', isActive && 'active')}>
               <span aria-hidden="true">{link.icon}</span>
               <span>{link.label}</span>
             </Link>

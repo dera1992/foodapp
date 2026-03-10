@@ -1,4 +1,5 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
+import { getProductPath } from '@/lib/products';
 import { formatDate } from '@/lib/utils/format';
 
 export function MessageBubble({
@@ -6,7 +7,7 @@ export function MessageBubble({
   isMine,
   createdAt,
   productName,
-  productId
+  productId,
 }: {
   body: string;
   isMine?: boolean;
@@ -23,7 +24,7 @@ export function MessageBubble({
       {productName ? (
         productId ? (
           <Link
-            href={`/products/${productId}`}
+            href={getProductPath({ id: productId, name: productName })}
             className={`mb-2 inline-flex rounded-full px-2 py-1 text-xs underline-offset-2 hover:underline ${
               isMine ? 'border border-green-200 bg-white text-black' : 'bg-sky-50 text-black'
             }`}

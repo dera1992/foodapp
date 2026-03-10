@@ -3,9 +3,10 @@ import { ProductCard } from '@/components/marketplace/ProductCard';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { getWishlist } from '@/lib/api/endpoints';
+import { filterVisibleProducts } from '@/lib/products';
 
 export default async function WishlistPage() {
-  const items = await getWishlist().then((r) => r.data).catch(() => []);
+  const items = await getWishlist().then((r) => filterVisibleProducts(r.data)).catch(() => []);
   return (
     <>
       <section className="bg-white py-14">

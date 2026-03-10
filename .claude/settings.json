@@ -5,7 +5,11 @@
       "Bash(docker compose exec web python manage.py makemigrations foodCreate --name=\"add_ingredients_to_products\")",
       "Bash(docker compose exec web python manage.py migrate foodCreate)",
       "Bash(docker compose exec web python manage.py makemigrations)",
-      "Bash(docker compose exec web python manage.py migrate)"
+      "Bash(docker compose exec web python manage.py migrate)",
+      "Bash(docker compose exec web python manage.py makemigrations order --name=\"add_payment_fields_and_saved_address\")",
+      "Bash(docker compose exec web pip install stripe==10.12.0)",
+      "Bash(docker compose exec web python manage.py check --deploy)",
+      "Bash(docker compose exec web python manage.py check)"
     ]
   }
 }

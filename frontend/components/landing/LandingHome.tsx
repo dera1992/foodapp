@@ -2,14 +2,17 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import type { Session } from '@/lib/auth/session';
 import type { Product, Shop } from '@/types/api';
 import { addToCart, addWishlist, getWishlist, removeWishlistByProduct } from '@/lib/api/endpoints';
+import { getProductPath } from '@/lib/products';
 import { HowItWorksCard } from '@/components/landing/HowItWorksCard';
 import { FeatureStrip } from '@/components/landing/FeatureStrip';
 
 type Props = {
   shops: Shop[];
   products: Product[];
+  session: Session;
 };
 
 const categoryItems: Array<{ label: string; icon: string; bg: string }> = [
@@ -58,11 +61,16 @@ function expiryRankDays(product: Product): number {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
-function expiryDays(product: Product): number {
-  if (!product.expiresOn) return 2;
+function expiryLabel(product: Product): string {
+  if (!product.expiresOn) return 'Exp: 2 days';
   const diff = new Date(product.expiresOn).getTime() - Date.now();
-  if (Number.isNaN(diff)) return 2;
-  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  if (Number.isNaN(diff)) return 'Exp: 2 days';
+
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  if (days < 0) return 'Expired';
+  if (days === 0) return 'Exp: today';
+  if (days === 1) return 'Exp: 1 day';
+  return `Exp: ${days} days`;
 }
 
 function getTimer() {
@@ -88,8 +96,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function LandingHome({ shops, products }: Props) {
-  const [activeCategory, setActiveCategory] = useState('Vegetables');
+export function LandingHome({ shops, products, session }: Props) {
   const [timer, setTimer] = useState({ h: 8, m: 42, s: 17 });
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [adding, setAdding] = useState<Record<string, boolean>>({});
@@ -146,7 +153,6 @@ export function LandingHome({ shops, products }: Props) {
   };
 
   const nearbyShops = useMemo(() => {
-    setCarouselIdx(0);
     if (!userCoords) return shops;
     return shops
       .map((shop) => ({
@@ -321,7 +327,7 @@ export function LandingHome({ shops, products }: Props) {
                   return (
                   <Link
                     key={p.id || i}
-                    href={p.id ? `/products/${String(p.id)}` : '/products'}
+                    href={p.id ? getProductPath({ id: String(p.id), slug: 'slug' in p && typeof p.slug === 'string' ? p.slug : undefined, name: p.name }) : '/products'}
                     className="mini-card"
                   >
                     <div className="mini-emoji">
@@ -356,7 +362,7 @@ export function LandingHome({ shops, products }: Props) {
       </section>
 
       {/*  FEATURE STRIP  */}
-      <FeatureStrip />
+      <FeatureStrip session={session} />
 
       {/*  MARQUEE  */}
       <div className="marquee-wrap">
@@ -395,17 +401,16 @@ export function LandingHome({ shops, products }: Props) {
         </div>
         <div className="cat-grid">
           {categoryItems.map((cat) => (
-            <button
+            <Link
               key={cat.label}
-              className={`cat-card ${activeCategory === cat.label ? "active" : ""}`}
-              onClick={() => setActiveCategory(cat.label)}
-              type="button"
+              className="cat-card"
+              href={`/products?category=${encodeURIComponent(cat.label)}`}
             >
               <div className="cat-icon" style={{ background: cat.bg }}>
                 {cat.icon}
               </div>
               <p>{cat.label}</p>
-            </button>
+            </Link>
           ))}
         </div>
       </section>
@@ -639,7 +644,7 @@ export function LandingHome({ shops, products }: Props) {
               </div>
             </div>
             <Link
-              href={featured?.id ? `/products/${String(featured.id)}` : '/products'}
+              href={featured?.id ? getProductPath({ id: String(featured.id), slug: featured.slug, name: featured.name }) : '/products'}
               className="btn-deal"
             >
               Grab this deal
@@ -685,7 +690,7 @@ export function LandingHome({ shops, products }: Props) {
           ] as Product[]).map((product, idx) => (
             <div className="product-card" key={product.id || idx}>
               <Link
-                href={product.id ? `/products/${String(product.id)}` : '/products'}
+                href={product.id ? getProductPath({ id: String(product.id), slug: product.slug, name: product.name }) : '/products'}
                 className="product-img"
                 aria-label={`View ${asName(product)}`}
               >
@@ -711,7 +716,7 @@ export function LandingHome({ shops, products }: Props) {
                   ['\u{1F966}', '\u{1F955}', '\u{1F345}', '\u{1F96C}'][idx % 4]
                 )}
                 <span className="expiry-badge">
-                  Exp: {expiryDays(product)} days
+                  {expiryLabel(product)}
                 </span>
                 <span className="save-badge wishlist-save-badge">
                   {savings(product)}% OFF
@@ -719,7 +724,7 @@ export function LandingHome({ shops, products }: Props) {
               </Link>
               <div className="product-body">
                 <p className="product-store">{asShop(product)}</p>
-                <Link href={product.id ? `/products/${String(product.id)}` : '/products'} className="product-name">{asName(product)}</Link>
+                <Link href={product.id ? getProductPath({ id: String(product.id), slug: product.slug, name: product.name }) : '/products'} className="product-name">{asName(product)}</Link>
                 <p className="product-weight">{asWeight(product)}</p>
                 <div className="product-footer">
                   <div className="prices">

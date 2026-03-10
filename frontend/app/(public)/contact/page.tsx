@@ -1,6 +1,61 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
+import { ApiError } from '@/lib/api/client';
+import { createContactInformation } from '@/lib/api/endpoints';
+
+type ContactFormState = {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+};
+
+const initialForm: ContactFormState = {
+  name: '',
+  email: '',
+  subject: '',
+  message: '',
+};
 
 export default function ContactPage() {
+  const [form, setForm] = useState<ContactFormState>(initialForm);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const updateField = (field: keyof ContactFormState, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!form.email.trim() || !form.subject.trim() || !form.message.trim()) {
+      setError('Email, subject, and message are required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await createContactInformation({
+        name: form.name.trim() || undefined,
+        email: form.email.trim(),
+        subject: form.subject.trim(),
+        message: form.message.trim(),
+      });
+      setForm(initialForm);
+      setSuccess('Your message has been sent. We will get back to you within 24 hours.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to send your message right now.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <>
       <section className="sub-hero sub-hero--contact">
@@ -44,28 +99,64 @@ export default function ContactPage() {
           <h2>Tell Us Your Message</h2>
           <p className="contact-form-sub">Fill in the form below and we'll be in touch.</p>
 
-          <form>
+          <form onSubmit={handleSubmit}>
             <div className="field-wrap">
               <label htmlFor="name">Name</label>
-              <input id="name" name="name" type="text" placeholder="Your full name" />
+              <input
+                id="name"
+                name="name"
+                type="text"
+                placeholder="Your full name"
+                value={form.name}
+                onChange={(event) => updateField('name', event.target.value)}
+              />
             </div>
 
             <div className="field-wrap">
               <label htmlFor="email">Email</label>
-              <input id="email" name="email" type="email" placeholder="your@email.com" />
+              <input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="your@email.com"
+                value={form.email}
+                onChange={(event) => updateField('email', event.target.value)}
+                required
+              />
             </div>
 
             <div className="field-wrap">
               <label htmlFor="subject">Subject</label>
-              <input id="subject" name="subject" type="text" placeholder="What's this about?" />
+              <input
+                id="subject"
+                name="subject"
+                type="text"
+                placeholder="What's this about?"
+                value={form.subject}
+                onChange={(event) => updateField('subject', event.target.value)}
+                required
+              />
             </div>
 
             <div className="field-wrap">
               <label htmlFor="message">Message</label>
-              <textarea id="message" name="message" rows={6} placeholder="Write your message here..." />
+              <textarea
+                id="message"
+                name="message"
+                rows={6}
+                placeholder="Write your message here..."
+                value={form.message}
+                onChange={(event) => updateField('message', event.target.value)}
+                required
+              />
             </div>
 
-            <button type="submit" className="btn-send">Send Message <span aria-hidden="true">-&gt;</span></button>
+            {error ? <p className="contact-form-sub" role="alert">{error}</p> : null}
+            {success ? <p className="contact-form-sub" role="status">{success}</p> : null}
+
+            <button type="submit" className="btn-send" disabled={isSubmitting}>
+              {isSubmitting ? 'Sending...' : 'Send Message'} <span aria-hidden="true">-&gt;</span>
+            </button>
           </form>
         </div>
       </section>

@@ -88,11 +88,15 @@ class CustomerAnalyticsAPIView(AuthenticatedHomeAPIView):
 
     @extend_schema(responses=APIPayloadSerializer)
     def get(self, request):
-        key = customer_analytics_cache_key(request.user.id)
-        payload = cache.get(key)
-        if payload is None:
-            payload = build_customer_analytics_payload(request.user)
-            cache.set(key, payload, ANALYTICS_CACHE_TTL_SECONDS)
+        days = request.query_params.get("days")
+        if days:
+            payload = build_customer_analytics_payload(request.user, days=days)
+        else:
+            key = customer_analytics_cache_key(request.user.id)
+            payload = cache.get(key)
+            if payload is None:
+                payload = build_customer_analytics_payload(request.user)
+                cache.set(key, payload, ANALYTICS_CACHE_TTL_SECONDS)
         return Response(payload)
 
 

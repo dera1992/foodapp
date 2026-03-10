@@ -6,6 +6,7 @@ import { ArrowUpDown, ChevronLeft, ChevronRight, Eye, Pencil, Trash2 } from 'luc
 import { Button } from '@/components/ui/Button';
 import type { Session } from '@/lib/auth/session';
 import { duplicateFoodcreateProduct } from '@/lib/api/endpoints';
+import { getProductPath } from '@/lib/products';
 import type { Product } from '@/types/api';
 import { cn } from '@/lib/utils/cn';
 import { formatCurrency } from '@/lib/utils/money';
@@ -28,20 +29,31 @@ function backendUrl(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
-function normalizeStatus(status?: string | null) {
-  const value = (status ?? '').toLowerCase();
+function isExpired(expiresOn?: string | null) {
+  if (!expiresOn) return false;
+  const expiry = new Date(expiresOn);
+  if (Number.isNaN(expiry.getTime())) return false;
+  expiry.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return expiry.getTime() < today.getTime();
+}
+
+function normalizeStatus(product: ProductRow) {
+  if (isExpired(product.expiresOn)) return 'expired';
+  const value = (product.status ?? '').toLowerCase();
   if (!value) return 'active';
   if (value.includes('out')) return 'out_of_stock';
   return value;
 }
 
-function prettyStatus(status?: string | null) {
-  const value = normalizeStatus(status);
+function prettyStatus(product: ProductRow) {
+  const value = normalizeStatus(product);
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function statusPillClass(status?: string | null) {
-  const value = normalizeStatus(status);
+function statusPillClass(product: ProductRow) {
+  const value = normalizeStatus(product);
   if (value === 'draft') return 'bg-amber-100 text-amber-800 border-amber-200';
   if (value === 'expired') return 'bg-red-100 text-red-700 border-red-200';
   if (value === 'out_of_stock') return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -124,7 +136,7 @@ export function AdminProductListPage({
           case 'price':
             return row.price ?? 0;
           case 'status':
-            return row.status ?? '';
+            return normalizeStatus(row);
         }
       };
 
@@ -321,14 +333,14 @@ export function AdminProductListPage({
                             : '--'}
                       </td>
                       <td className="px-4 py-4">
-                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold', statusPillClass(product.status))}>
-                          {prettyStatus(product.status)}
+                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold', statusPillClass(product))}>
+                          {prettyStatus(product)}
                         </span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
-                            href={`/products/${product.id}`}
+                            href={getProductPath(product)}
                             className="inline-flex h-9 items-center gap-1 rounded-lg border border-brand-border px-3 text-xs font-semibold text-brand-text hover:bg-slate-50"
                           >
                             <Eye className="h-3.5 w-3.5" />
